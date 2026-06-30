@@ -382,6 +382,19 @@ def _fmt_reset(iso):
         return iso
 
 
+def _fmt_reset_friendly(iso):
+    """Format a reset time as 'today ~HH:MM' or 'Day Mon D'."""
+    if not iso:
+        return "?"
+    try:
+        d = dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone()
+        if d.date() == dt.datetime.now().astimezone().date():
+            return f"today ~{d.strftime('%H:%M')}"
+        return d.strftime("%a %b %-d")
+    except ValueError:
+        return iso
+
+
 def _bar(pct, width=20):
     pct = max(0, min(100, pct or 0))
     filled = round(pct / 100 * width)
@@ -445,13 +458,34 @@ def usage_report():
         email = s.get("email") or "unknown"
         if email not in latest or s["t"] > latest[email]["t"]:
             latest[email] = s
+    active_email, _ = current_account()
     print("  Latest live reading:")
     for email in sorted(latest):
         s = latest[email]
+        plan = s.get("plan") or "?"
         sp = s.get("session_pct")
-        print(f"    {email}: weekly {s['weekly_pct']}% (resets {_fmt_reset(s.get('weekly_resets'))})"
-              + (f", 5h-session {sp}% (resets {_fmt_reset(s.get('session_resets'))})" if sp is not None else "")
-              + f"   as of {_fmt_reset(s['t'])}")
+        weekly_reset = _fmt_reset_friendly(s.get("weekly_resets"))
+        label = f"{email} ({plan})"
+        if email == active_email:
+            label = f"\033[1m{label} ◀ active\033[0m"
+        print(f"\n  {label}")
+        print(f"  - Current week: {s['weekly_pct']}% used (resets {weekly_reset})")
+        session_resets_iso = s.get("session_resets")
+        session_expired = False
+        if session_resets_iso:
+            try:
+                resets_at = dt.datetime.fromisoformat(session_resets_iso.replace("Z", "+00:00")).astimezone()
+                session_expired = resets_at <= dt.datetime.now().astimezone()
+            except ValueError:
+                pass
+        if session_expired:
+            print("  - 5h session: no activity")
+        elif sp is not None:
+            session_reset = _fmt_reset_friendly(session_resets_iso)
+            if sp >= 100:
+                print(f"  - 5h session: {sp}% (maxed out, resets {session_reset})")
+            else:
+                print(f"  - 5h session: {sp}% (resets {session_reset})")
 
 
 def export_csv(archive, path):
@@ -516,12 +550,11 @@ def export_snapshot(archive, timeline, dirpath):
 
 def main():
     ap = argparse.ArgumentParser(description="Persistent weekly Claude Code usage tracker.")
-    ap.add_argument("--report", action="store_true", help="print archive without scanning")
+    ap.add_argument("cmd", nargs="?",
+                    help="subcommand: update | usage | report")
     ap.add_argument("--record-account", action="store_true", help="only sample the active account")
     ap.add_argument("--record-limits", action="store_true",
                     help="sample active account + live subscription-limit %% (via CodexBar)")
-    ap.add_argument("--usage", action="store_true",
-                    help="show %% of subscription limit consumed per weekly cycle per account")
     ap.add_argument("--by-model", action="store_true", help="include per-model breakdown")
     ap.add_argument("--csv", metavar="PATH", help="export archive to CSV")
     ap.add_argument("--export-dir", metavar="DIR",
@@ -531,9 +564,32 @@ def main():
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
     timeline = load_json(TIMELINE_PATH, [])
 
-    if args.usage:
+    if args.cmd == "update":
+        email, s = record_limits(timeline)
+        if s:
+            print(f"Updated. {email or 'unknown'}: weekly {s['weekly_pct']}%, "
+                  f"5h session {s['session_pct']}%")
+        else:
+            print(f"Updated account: {email} (CodexBar unavailable — no limit reading)")
+        return
+
+    if args.cmd == "usage":
         usage_report()
         return
+
+    if args.cmd == "report":
+        archive = load_json(WEEKLY_PATH, {})
+        report(archive, by_model=args.by_model)
+        if args.export_dir:
+            export_snapshot(archive, timeline, args.export_dir)
+        return
+
+    if args.cmd == "help":
+        ap.print_help()
+        return
+
+    if args.cmd is not None:
+        ap.error(f"unknown subcommand '{args.cmd}' — valid: update, usage, report, help")
 
     if args.record_limits:
         email, s = record_limits(timeline)
@@ -542,13 +598,6 @@ def main():
                   f"5h-session {s['session_pct']}% used")
         else:
             print(f"Active account: {email} (no live limit reading available)")
-        return
-
-    if args.report:
-        archive = load_json(WEEKLY_PATH, {})
-        report(archive, by_model=args.by_model)
-        if args.export_dir:
-            export_snapshot(archive, timeline, args.export_dir)
         return
 
     timeline, email = record_account(timeline)

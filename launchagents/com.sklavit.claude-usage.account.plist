@@ -8,15 +8,12 @@
     <array>
         <string>/usr/bin/python3</string>
         <string>$HOME/.claude-usage-archive/track.py</string>
-        <string>--record-account</string>
+        <string>--record-limits</string>
     </array>
-    <key>StartInterval</key>
-    <integer>1800</integer>
+    <key>StartInterval</key><integer>1800</integer>
     <key>RunAtLoad</key>
     <true/>
-    <key>StandardOutPath</key>
-    <string>$HOME/.claude-usage-archive/account.log</string>
-    <key>StandardErrorPath</key>
-    <string>$HOME/.claude-usage-archive/account.log</string>
+    <key>StandardOutPath</key><string>$HOME/.claude-usage-archive/account.log</string>
+    <key>StandardErrorPath</key><string>$HOME/.claude-usage-archive/account.log</string>
 </dict>
 </plist>

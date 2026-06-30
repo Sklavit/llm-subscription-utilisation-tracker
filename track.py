@@ -30,6 +30,8 @@ import datetime as dt
 import glob
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -39,6 +41,8 @@ CLAUDE_JSON = os.path.join(HOME, ".claude.json")
 ARCHIVE_DIR = os.path.join(HOME, ".claude-usage-archive")
 WEEKLY_PATH = os.path.join(ARCHIVE_DIR, "weekly.json")
 TIMELINE_PATH = os.path.join(ARCHIVE_DIR, "account_timeline.json")
+# Append-only time series of live subscription-limit readings (from CodexBar).
+LIMITS_PATH = os.path.join(ARCHIVE_DIR, "limit_samples.jsonl")
 
 # Per-MILLION-token USD prices (API list prices; cache_5m=1.25x in, cache_1h=2x in, cache_read=0.1x in).
 # Edit freely. Unknown models fall back to the "sonnet" tier and are flagged.
@@ -106,6 +110,69 @@ def account_for(ts_epoch, timeline):
         else:
             break
     return chosen
+
+
+# ---------- live subscription-limit sampling (via CodexBar CLI) ----------
+# Anthropic publishes no fixed limit number and stores no history, so we cannot
+# compute "% of limit" from tokens. CodexBar's `usage` command queries the live
+# claude.ai limit endpoint (it owns the auth). We sample it on a schedule and
+# append each reading, building the history that nothing else keeps.
+
+def codexbar_bin():
+    candidates = [
+        shutil.which("codexbar"),
+        "/opt/homebrew/bin/codexbar",
+        os.path.expanduser("~/Applications/CodexBar.app/Contents/Helpers/CodexBarCLI"),
+        "/Applications/CodexBar.app/Contents/Helpers/CodexBarCLI",
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+def sample_limits():
+    """Return live limit reading via CodexBar, or None if unavailable."""
+    cb = codexbar_bin()
+    if not cb:
+        return None
+    try:
+        out = subprocess.run(
+            [cb, "usage", "--provider", "claude", "--format", "json", "--source", "oauth"],
+            capture_output=True, text=True, timeout=90,
+        )
+        data = json.loads(out.stdout)
+    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    entry = data[0] or {}
+    usage = entry.get("usage") or {}
+    if entry.get("error") or not usage:
+        return None
+    prim = usage.get("primary") or {}
+    sec = usage.get("secondary") or {}
+    return {
+        "plan": usage.get("loginMethod"),
+        "session_pct": prim.get("usedPercent"),
+        "session_resets": prim.get("resetsAt"),
+        "weekly_pct": sec.get("usedPercent"),
+        "weekly_resets": sec.get("resetsAt"),
+    }
+
+
+def record_limits(timeline):
+    """Sample the active account + its live limit %, append to the time series."""
+    timeline, email = record_account(timeline)
+    atomic_write(TIMELINE_PATH, timeline)
+    now = dt.datetime.now(dt.timezone.utc)
+    rec = {"t": now.isoformat(), "iso_week": iso_week(now), "email": email}
+    s = sample_limits()
+    if s:
+        rec.update(s)
+    with open(LIMITS_PATH, "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    return email, s
 
 
 # ---------- pricing ----------
@@ -305,6 +372,88 @@ def report(archive, by_model=False):
               f"msgs {t['messages']:>6}  est ${t['cost']:,.2f}")
 
 
+def _fmt_reset(iso):
+    if not iso:
+        return "?"
+    try:
+        d = dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone()
+        return d.strftime("%a %b %d %H:%M")
+    except ValueError:
+        return iso
+
+
+def _bar(pct, width=20):
+    pct = max(0, min(100, pct or 0))
+    filled = round(pct / 100 * width)
+    return "█" * filled + "·" * (width - filled)
+
+
+def usage_report():
+    """Show % of subscription limit consumed, per weekly cycle, per account.
+
+    Built from live readings sampled by the scheduler (limit_samples.jsonl).
+    """
+    samples = []
+    try:
+        with open(LIMITS_PATH) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        samples.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+    except FileNotFoundError:
+        pass
+
+    have = [s for s in samples if s.get("weekly_pct") is not None]
+    if not have:
+        print("No live limit readings yet.")
+        print("These accrue going forward — the 30-min scheduler samples them via CodexBar.")
+        print("Sample one now:  /usr/bin/python3 ~/.claude-usage-archive/track.py --record-limits")
+        return
+
+    # Group into weekly cycles, keyed by (account, weekly_resets). Within a cycle the
+    # % only grows until reset, so max == the week's final utilisation.
+    cycles = {}
+    for s in have:
+        email = s.get("email") or "unknown"
+        key = (email, s.get("weekly_resets"))
+        c = cycles.setdefault(key, {"peak": 0, "last": None, "last_t": "", "plan": s.get("plan")})
+        c["peak"] = max(c["peak"], s["weekly_pct"])
+        if s["t"] > c["last_t"]:
+            c["last_t"], c["last"] = s["t"], s["weekly_pct"]
+
+    by_acct = {}
+    for (email, resets), c in cycles.items():
+        by_acct.setdefault(email, []).append((resets, c))
+
+    print("\nSubscription limit utilisation — % of WEEKLY limit consumed per cycle")
+    print("(live readings via CodexBar; weekly window resets on your account's own schedule)\n")
+    for email in sorted(by_acct):
+        rows = sorted(by_acct[email], key=lambda r: (r[0] or ""), reverse=True)
+        plan = next((c["plan"] for _, c in rows if c["plan"]), "?")
+        print(f"  {email}   [{plan}]")
+        print(f"    {'Week resets':<20}{'Peak':>6}  {'Utilisation':<22}")
+        for resets, c in rows:
+            print(f"    {_fmt_reset(resets):<20}{str(c['peak'])+'%':>6}  {_bar(c['peak'])}")
+        print()
+
+    # Latest live snapshot (session + weekly) per account.
+    latest = {}
+    for s in have:
+        email = s.get("email") or "unknown"
+        if email not in latest or s["t"] > latest[email]["t"]:
+            latest[email] = s
+    print("  Latest live reading:")
+    for email in sorted(latest):
+        s = latest[email]
+        sp = s.get("session_pct")
+        print(f"    {email}: weekly {s['weekly_pct']}% (resets {_fmt_reset(s.get('weekly_resets'))})"
+              + (f", 5h-session {sp}% (resets {_fmt_reset(s.get('session_resets'))})" if sp is not None else "")
+              + f"   as of {_fmt_reset(s['t'])}")
+
+
 def export_csv(archive, path):
     rows = []
     for week, accts in archive.items():
@@ -332,21 +481,74 @@ def export_csv(archive, path):
     print(f"Wrote {len(rows)} rows -> {path}")
 
 
+def export_snapshot(archive, timeline, dirpath):
+    """Mirror the collected statistics into dirpath (data + CSV + human report)."""
+    import contextlib
+    import io
+
+    os.makedirs(dirpath, exist_ok=True)
+    atomic_write(os.path.join(dirpath, "weekly.json"), archive)
+    atomic_write(os.path.join(dirpath, "account_timeline.json"), timeline)
+    export_csv(archive, os.path.join(dirpath, "weekly.csv"))
+
+    stamp = dt.datetime.now(dt.timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    buf = io.StringIO()
+    buf.write(f"Generated: {stamp}\n")
+    with contextlib.redirect_stdout(buf):
+        report(archive, by_model=True)
+    with open(os.path.join(dirpath, "report.txt"), "w") as f:
+        f.write(buf.getvalue())
+
+    # Subscription-limit history + the % usage report.
+    if os.path.exists(LIMITS_PATH):
+        shutil.copyfile(LIMITS_PATH, os.path.join(dirpath, "limit_samples.jsonl"))
+    ubuf = io.StringIO()
+    ubuf.write(f"Generated: {stamp}\n")
+    with contextlib.redirect_stdout(ubuf):
+        usage_report()
+    with open(os.path.join(dirpath, "usage.txt"), "w") as f:
+        f.write(ubuf.getvalue())
+
+    print(f"Snapshot written -> {dirpath}")
+
+
 # ---------- main ----------
 
 def main():
     ap = argparse.ArgumentParser(description="Persistent weekly Claude Code usage tracker.")
     ap.add_argument("--report", action="store_true", help="print archive without scanning")
     ap.add_argument("--record-account", action="store_true", help="only sample the active account")
+    ap.add_argument("--record-limits", action="store_true",
+                    help="sample active account + live subscription-limit %% (via CodexBar)")
+    ap.add_argument("--usage", action="store_true",
+                    help="show %% of subscription limit consumed per weekly cycle per account")
     ap.add_argument("--by-model", action="store_true", help="include per-model breakdown")
     ap.add_argument("--csv", metavar="PATH", help="export archive to CSV")
+    ap.add_argument("--export-dir", metavar="DIR",
+                    help="mirror collected stats (weekly.json, csv, report.txt) into DIR")
     args = ap.parse_args()
 
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
     timeline = load_json(TIMELINE_PATH, [])
 
+    if args.usage:
+        usage_report()
+        return
+
+    if args.record_limits:
+        email, s = record_limits(timeline)
+        if s:
+            print(f"{email or 'unknown'}: weekly {s['weekly_pct']}% used, "
+                  f"5h-session {s['session_pct']}% used")
+        else:
+            print(f"Active account: {email} (no live limit reading available)")
+        return
+
     if args.report:
-        report(load_json(WEEKLY_PATH, {}), by_model=args.by_model)
+        archive = load_json(WEEKLY_PATH, {})
+        report(archive, by_model=args.by_model)
+        if args.export_dir:
+            export_snapshot(archive, timeline, args.export_dir)
         return
 
     timeline, email = record_account(timeline)
@@ -369,6 +571,8 @@ def main():
     report(archive, by_model=args.by_model)
     if args.csv:
         export_csv(archive, args.csv)
+    if args.export_dir:
+        export_snapshot(archive, timeline, args.export_dir)
 
 
 if __name__ == "__main__":

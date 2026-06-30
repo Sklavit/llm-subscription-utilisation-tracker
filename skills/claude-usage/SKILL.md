@@ -1,6 +1,6 @@
 ---
 name: claude-usage
-description: Report, maintain, or troubleshoot the persistent Claude Code weekly usage archive (tokens + estimated cost, split per account). Use when the user asks "how much Claude have I used", "weekly usage", "usage per account", "why does ccusage/CodexBar only show recent months", "back up my usage history", or wants to change pricing/schedule of the usage tracker.
+description: Report, maintain, or troubleshoot the persistent Claude Code usage archive — weekly tokens + estimated cost AND % of subscription limit consumed, split per account. Use when the user asks "usage", "how much Claude have I used", "weekly usage", "usage per account", "% of my limit", "subscription utilisation", "why does ccusage/CodexBar only show recent months", "back up my usage history", or wants to change pricing/schedule of the usage tracker.
 ---
 
 # Claude Code Usage Archive
@@ -17,7 +17,20 @@ Claude Code deletes transcripts (`~/.claude/projects/**/*.jsonl`) after
 disk, so they max out at ~30 days / ~2 calendar months. This archive snapshots the
 aggregates so history survives the cleanup. The user has set `cleanupPeriodDays: 365`.
 
-## Read current usage
+## "usage" → % of subscription limit consumed
+
+```bash
+/usr/bin/python3 ~/.claude-usage-archive/track.py --usage           # report
+/usr/bin/python3 ~/.claude-usage-archive/track.py --record-limits   # sample now
+```
+
+True % can't come from tokens (Anthropic publishes no fixed limit, stores no history).
+It's sampled live from the CodexBar CLI every 30 min into `limit_samples.jsonl` and
+accrues going forward — **not backfillable**. Report shows peak % of the weekly limit
+per weekly cycle per account, plus latest session (5h) + weekly readings. Needs
+CodexBar installed and logged in.
+
+## Read token usage / cost
 
 ```bash
 /usr/bin/python3 ~/.claude-usage-archive/track.py --report      # whole archive
@@ -26,6 +39,11 @@ aggregates so history survives the cleanup. The user has set `cleanupPeriodDays:
 ```
 
 `--report` does NOT rescan; the bare command (no flags) scans logs, merges, and prints.
+
+A read-only snapshot is also mirrored into the project's `data/` folder
+(`weekly.json`, `weekly.csv`, `report.txt`, `account_timeline.json`) by the daily agent
+via `--export-dir`. Use those for quick reading/backup; the authoritative archive is
+`~/.claude-usage-archive/weekly.json`.
 
 ## How attribution works (state honestly)
 

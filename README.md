@@ -27,6 +27,55 @@ Everything lives in `~/.claude-usage-archive/`:
 | `account_timeline.json` | timestamped record of which account was active; drives the per-account split |
 | `scan.log` / `account.log` | output of the scheduled LaunchAgents |
 
+## `usage` — % of subscription limit consumed
+
+> Ask for **"usage"** to see *% of your weekly limit consumed, per week, per account.*
+
+Anthropic publishes **no fixed limit number** and stores **no history** of your
+utilisation — the live % only exists behind the authenticated claude.ai endpoint
+(what Claude Code's `/usage` and CodexBar show). So this can't be reconstructed from
+tokens or backfilled. Instead, the scheduler **samples the live % every 30 minutes**
+(via the CodexBar CLI, which owns the auth) and appends each reading to
+`~/.claude-usage-archive/limit_samples.jsonl`. History accrues from now on.
+
+```bash
+/usr/bin/python3 ~/.claude-usage-archive/track.py --usage           # the report
+/usr/bin/python3 ~/.claude-usage-archive/track.py --record-limits   # sample now
+```
+
+It reports, per account, the **peak % of the weekly limit** reached in each weekly
+cycle (the weekly window resets on your account's own schedule, not Mon–Sun), plus
+the latest live session (5-hour) and weekly readings. The active Claude Code account
+is whatever's sampled; switching accounts is captured automatically over time.
+
+Requires CodexBar installed (`brew install --cask steipete/tap/codexbar`) and logged
+in. Without it, token/cost tracking still works; only `--usage` is unavailable.
+
+## Collected statistics (in this folder)
+
+The daily scan also mirrors a snapshot into `data/` here, so the stats live in your
+notes (backed up / synced) and not only in `~/.claude-usage-archive/`:
+
+| File | Purpose |
+|------|---------|
+| `data/weekly.json` | full archive copy (machine-readable) |
+| `data/weekly.csv` | one row per week × account × model (for spreadsheets) |
+| `data/report.txt` | human-readable table with per-model breakdown + a `Generated:` stamp |
+| `data/account_timeline.json` | account-activity timeline copy |
+| `data/limit_samples.jsonl` | time series of live subscription-limit readings |
+| `data/usage.txt` | the `% of limit consumed` report (per cycle, per account) |
+
+This is refreshed automatically by the daily LaunchAgent (via `--export-dir`). To
+refresh on demand:
+
+```bash
+/usr/bin/python3 ~/.claude-usage-archive/track.py \
+  --export-dir $HOME/personal/personal_notes/_automation/claude-usage-tracker/data
+```
+
+> The `data/` copy is a snapshot for reading/backup. The **live, authoritative**
+> archive that must never shrink is still `~/.claude-usage-archive/weekly.json`.
+
 ## How it works
 
 1. **Source** — parses every `~/.claude/projects/**/*.jsonl`, taking each assistant
@@ -100,3 +149,63 @@ Uses the stable system `/usr/bin/python3` and only the standard library — no d
 
 - `~/.claude/settings.json → "cleanupPeriodDays": 365` keeps raw logs for a year so the
   archive has more to draw from.
+
+
+---
+Here are the main ways to inspect launchd jobs:
+
+## List loaded agents
+
+```bash
+launchctl list                      # all loaded jobs
+launchctl list | grep claude-usage  # just the usage tracker
+```
+
+Output is three columns: **PID** (a number if currently running, `-` if idle/waiting) · **Last exit status** (`0` = last run succeeded, nonzero = failed) · **Label**.
+
+## Inspect one job in detail
+
+```bash
+launchctl print gui/$(id -u)/com.sklavit.claude-usage.scan
+```
+
+This is the modern, detailed view — shows state, run schedule, last exit reason, program arguments, paths, and run counts.
+
+## Check what it actually did
+
+For this tracker, the agents log to files:
+
+```bash
+cat ~/.claude-usage-archive/scan.log       # daily full-scan output
+cat ~/.claude-usage-archive/account.log    # 30-min account sampler
+```
+
+## See the installed definitions
+
+```bash
+ls ~/Library/LaunchAgents/ | grep claude-usage
+cat ~/Library/LaunchAgents/com.sklavit.claude-usage.scan.plist
+```
+
+## Force a run now (instead of waiting for the schedule)
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.sklavit.claude-usage.scan
+```
+
+## System-wide jobs
+
+`launchctl list` (without sudo) shows your per-user agents. Daemons run in a different domain:
+
+```bash
+sudo launchctl list                 # system daemons
+sudo launchctl print system/<label>
+```
+
+## Quick mental model
+
+- `launchctl list` → "what's loaded and did it last succeed?"
+- `launchctl print gui/$(id -u)/<label>` → "tell me everything about this one"
+- the `.log` files → "what was the actual output?"
+
+For your two tracker agents, the fastest health check is `launchctl list | grep claude-usage` — if the second column is `0` for both, they're running fine.

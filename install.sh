@@ -6,6 +6,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCHIVE_DIR="$HOME/.claude-usage-archive"
 AGENTS_DIR="$HOME/Library/LaunchAgents"
+EXPORT_DIR="$HERE/data"   # collected stats are mirrored here (inside this notes folder)
 PY="/usr/bin/python3"   # system python (survives Homebrew upgrades); script is stdlib-only
 UID_NUM="$(id -u)"
 
@@ -30,6 +31,8 @@ cat > "$AGENTS_DIR/$SCAN_LABEL.plist" <<PLIST
     <array>
         <string>$PY</string>
         <string>$ARCHIVE_DIR/track.py</string>
+        <string>--export-dir</string>
+        <string>$EXPORT_DIR</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -55,7 +58,7 @@ cat > "$AGENTS_DIR/$ACCT_LABEL.plist" <<PLIST
     <array>
         <string>$PY</string>
         <string>$ARCHIVE_DIR/track.py</string>
-        <string>--record-account</string>
+        <string>--record-limits</string>
     </array>
     <key>StartInterval</key><integer>1800</integer>
     <key>RunAtLoad</key>
@@ -76,8 +79,8 @@ echo "==> Keep a copy of the plists in the repo for reference"
 cp "$AGENTS_DIR/$SCAN_LABEL.plist" "$HERE/launchagents/" 2>/dev/null || true
 cp "$AGENTS_DIR/$ACCT_LABEL.plist" "$HERE/launchagents/" 2>/dev/null || true
 
-echo "==> Initial backfill"
-"$PY" "$ARCHIVE_DIR/track.py"
+echo "==> Initial backfill + stats snapshot to $EXPORT_DIR"
+"$PY" "$ARCHIVE_DIR/track.py" --export-dir "$EXPORT_DIR"
 
 echo
 echo "Done. Loaded agents:"

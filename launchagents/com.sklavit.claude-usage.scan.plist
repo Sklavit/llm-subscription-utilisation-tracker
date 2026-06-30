@@ -8,19 +8,17 @@
     <array>
         <string>/usr/bin/python3</string>
         <string>$HOME/.claude-usage-archive/track.py</string>
+        <string>--export-dir</string>
+        <string>$HOME/personal/personal_notes/_automation/claude-usage-tracker/data</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Hour</key>
-        <integer>9</integer>
-        <key>Minute</key>
-        <integer>5</integer>
+        <key>Hour</key><integer>9</integer>
+        <key>Minute</key><integer>5</integer>
     </dict>
     <key>RunAtLoad</key>
     <true/>
-    <key>StandardOutPath</key>
-    <string>$HOME/.claude-usage-archive/scan.log</string>
-    <key>StandardErrorPath</key>
-    <string>$HOME/.claude-usage-archive/scan.log</string>
+    <key>StandardOutPath</key><string>$HOME/.claude-usage-archive/scan.log</string>
+    <key>StandardErrorPath</key><string>$HOME/.claude-usage-archive/scan.log</string>
 </dict>
 </plist>

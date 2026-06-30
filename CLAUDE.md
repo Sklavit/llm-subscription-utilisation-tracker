@@ -13,6 +13,10 @@ Code usage** (tokens + estimated API-equivalent cost), split per account. Read
 - **This folder is the source of truth.** Edit `track.py` and the plists *here*.
 - The *running* copy lives at `~/.claude-usage-archive/track.py`, and the *active*
   LaunchAgents live at `~/Library/LaunchAgents/com.sklavit.claude-usage.*.plist`.
+- A read-only snapshot of the stats is mirrored into `data/` here by the daily agent
+  (`--export-dir`). `data/` is for backup/reading; the authoritative archive that must
+  never shrink is `~/.claude-usage-archive/weekly.json`. Don't treat `data/weekly.json`
+  as the source — it's a copy.
 - After any edit, run `./install.sh` to redeploy. Never hand-edit the deployed copy
   as the primary change — it gets overwritten on the next install.
 
@@ -31,6 +35,23 @@ Code usage** (tokens + estimated API-equivalent cost), split per account. Read
 4. **Stable interpreter.** The LaunchAgents call `/usr/bin/python3` on purpose (system
    Python survives Homebrew upgrades). The script must stay **stdlib-only** — no pip
    dependencies.
+
+## The `usage` view (% of subscription limit)
+
+When the user asks for **"usage"**, run:
+`/usr/bin/python3 ~/.claude-usage-archive/track.py --usage` — it shows % of the weekly
+limit consumed per weekly cycle per account.
+
+- True "% of limit" **cannot** be computed from tokens: Anthropic publishes no fixed
+  limit and stores no history. The only source is the live claude.ai endpoint.
+- We get it via the **CodexBar CLI** (`codexbar usage --provider claude --format json
+  --source oauth`), which owns the auth. Never try to read OAuth tokens / hit the
+  endpoint directly — let CodexBar do it.
+- The 30-min agent samples it (`--record-limits`) into the append-only
+  `~/.claude-usage-archive/limit_samples.jsonl`. It only accrues going forward; it
+  cannot be backfilled. Don't claim historical % before sampling began.
+- `--source oauth` reflects the currently-logged-in Claude Code account (paired with
+  the email from `~/.claude.json`). Each account is captured when it's the active one.
 
 ## Common tasks
 

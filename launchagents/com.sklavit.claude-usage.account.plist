@@ -7,7 +7,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>$HOME/.claude-usage-archive/track.py</string>
+        <string>$HOME/.claude-usage-archive/usage.py</string>
         <string>--record-limits</string>
     </array>
     <key>StartInterval</key><integer>1800</integer>

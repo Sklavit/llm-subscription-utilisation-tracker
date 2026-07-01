@@ -7,7 +7,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>$HOME/.claude-usage-archive/track.py</string>
+        <string>$HOME/.claude-usage-archive/usage.py</string>
         <string>--export-dir</string>
         <string>$HOME/personal/personal_notes/_automation/claude-usage-tracker/data</string>
     </array>

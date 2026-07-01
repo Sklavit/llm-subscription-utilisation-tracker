@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install the Claude Code weekly usage tracker: deploy script, generate + load
-# LaunchAgents, run an initial backfill. Re-run any time after editing track.py.
+# LaunchAgents, run an initial backfill. Re-run any time after editing usage.py.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,9 +13,10 @@ UID_NUM="$(id -u)"
 SCAN_LABEL="com.sklavit.claude-usage.scan"
 ACCT_LABEL="com.sklavit.claude-usage.account"
 
-echo "==> Deploying track.py to $ARCHIVE_DIR"
+echo "==> Deploying usage.py to $ARCHIVE_DIR"
 mkdir -p "$ARCHIVE_DIR"
-cp "$HERE/track.py" "$ARCHIVE_DIR/track.py"
+rm -f "$ARCHIVE_DIR/track.py"
+cp "$HERE/usage.py" "$ARCHIVE_DIR/usage.py"
 
 echo "==> Writing LaunchAgent plists to $AGENTS_DIR"
 mkdir -p "$AGENTS_DIR"
@@ -30,7 +31,7 @@ cat > "$AGENTS_DIR/$SCAN_LABEL.plist" <<PLIST
     <key>ProgramArguments</key>
     <array>
         <string>$PY</string>
-        <string>$ARCHIVE_DIR/track.py</string>
+        <string>$ARCHIVE_DIR/usage.py</string>
         <string>--export-dir</string>
         <string>$EXPORT_DIR</string>
     </array>
@@ -57,7 +58,7 @@ cat > "$AGENTS_DIR/$ACCT_LABEL.plist" <<PLIST
     <key>ProgramArguments</key>
     <array>
         <string>$PY</string>
-        <string>$ARCHIVE_DIR/track.py</string>
+        <string>$ARCHIVE_DIR/usage.py</string>
         <string>--record-limits</string>
     </array>
     <key>StartInterval</key><integer>1800</integer>
@@ -80,7 +81,7 @@ cp "$AGENTS_DIR/$SCAN_LABEL.plist" "$HERE/launchagents/" 2>/dev/null || true
 cp "$AGENTS_DIR/$ACCT_LABEL.plist" "$HERE/launchagents/" 2>/dev/null || true
 
 echo "==> Initial backfill + stats snapshot to $EXPORT_DIR"
-"$PY" "$ARCHIVE_DIR/track.py" --export-dir "$EXPORT_DIR"
+"$PY" "$ARCHIVE_DIR/usage.py" --export-dir "$EXPORT_DIR"
 
 echo
 echo "Done. Loaded agents:"

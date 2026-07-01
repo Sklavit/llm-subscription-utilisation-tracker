@@ -20,8 +20,8 @@ aggregates so history survives the cleanup. The user has set `cleanupPeriodDays:
 ## "usage" → % of subscription limit consumed
 
 ```bash
-/usr/bin/python3 ~/.claude-usage-archive/track.py --usage           # report
-/usr/bin/python3 ~/.claude-usage-archive/track.py --record-limits   # sample now
+uv run ~/.claude-usage-archive/usage.py check              # report
+uv run ~/.claude-usage-archive/usage.py --record-limits    # sample now
 ```
 
 True % can't come from tokens (Anthropic publishes no fixed limit, stores no history).
@@ -33,12 +33,12 @@ CodexBar installed and logged in.
 ## Read token usage / cost
 
 ```bash
-/usr/bin/python3 ~/.claude-usage-archive/track.py --report      # whole archive
-/usr/bin/python3 ~/.claude-usage-archive/track.py --by-model    # + per-model rows
-/usr/bin/python3 ~/.claude-usage-archive/track.py --csv ~/usage.csv
+uv run ~/.claude-usage-archive/usage.py report      # whole archive
+uv run ~/.claude-usage-archive/usage.py --by-model  # + per-model rows
+uv run ~/.claude-usage-archive/usage.py --csv ~/usage.csv
 ```
 
-`--report` does NOT rescan; the bare command (no flags) scans logs, merges, and prints.
+`report` does NOT rescan; the bare command (no args) scans logs, merges, and prints.
 
 A read-only snapshot is also mirrored into the project's `data/` folder
 (`weekly.json`, `weekly.csv`, `report.txt`, `account_timeline.json`) by the daily agent
@@ -55,7 +55,7 @@ via `--export-dir`. Use those for quick reading/backup; the authoritative archiv
 
 ## Maintain
 
-- **Pricing wrong / new model unpriced:** edit `PRICING` in the project's `track.py`,
+- **Pricing wrong / new model unpriced:** edit `PRICING` in the project's `usage.py`,
   then run the project's `./install.sh` to redeploy. Unknown models fall back to the
   `sonnet` tier and are flagged in output.
 - **Change schedule:** edit plist generation in the project's `install.sh`, re-run it.
@@ -72,4 +72,5 @@ via `--export-dir`. Use those for quick reading/backup; the authoritative archiv
 
 - Never overwrite/delete `~/.claude-usage-archive/weekly.json` without explicit
   confirmation — aged-out weeks exist nowhere else.
-- Keep the script stdlib-only (LaunchAgents run `/usr/bin/python3`).
+- Keep the script stdlib-only (LaunchAgents run `/usr/bin/python3`; manual/interactive
+  use runs it via `uv run` instead).

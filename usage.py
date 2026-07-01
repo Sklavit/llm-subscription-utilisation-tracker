@@ -17,11 +17,13 @@ account was active at each message's timestamp. All history before the first run
 is attributed to whatever account is active on that first run.
 
 Usage:
-  python3 track.py                  # sample account + scan logs + merge + report
-  python3 track.py --report         # just print the archive (no scan)
-  python3 track.py --record-account # only sample the active account (fast; for frequent timers)
-  python3 track.py --csv out.csv    # also export the archive as CSV
-  python3 track.py --by-model       # include per-model breakdown in the report
+  uv run usage.py                  # sample account + scan logs + merge + report
+  uv run usage.py report           # just print the archive (no scan)
+  uv run usage.py check            # % of subscription limit consumed, per account
+  uv run usage.py update           # sample active account + live limit % (fast; for frequent timers)
+  uv run usage.py --record-account # only sample the active account
+  uv run usage.py --csv out.csv    # also export the archive as CSV
+  uv run usage.py --by-model       # include per-model breakdown in the report
 """
 
 import argparse
@@ -423,7 +425,7 @@ def usage_report():
     if not have:
         print("No live limit readings yet.")
         print("These accrue going forward — the 30-min scheduler samples them via CodexBar.")
-        print("Sample one now:  /usr/bin/python3 ~/.claude-usage-archive/track.py --record-limits")
+        print("Sample one now:  uv run ~/.claude-usage-archive/usage.py --record-limits")
         return
 
     # Group into weekly cycles, keyed by (account, weekly_resets). Within a cycle the
@@ -551,7 +553,7 @@ def export_snapshot(archive, timeline, dirpath):
 def main():
     ap = argparse.ArgumentParser(description="Persistent weekly Claude Code usage tracker.")
     ap.add_argument("cmd", nargs="?",
-                    help="subcommand: update | usage | report")
+                    help="subcommand: update | check | report")
     ap.add_argument("--record-account", action="store_true", help="only sample the active account")
     ap.add_argument("--record-limits", action="store_true",
                     help="sample active account + live subscription-limit %% (via CodexBar)")
@@ -573,7 +575,7 @@ def main():
             print(f"Updated account: {email} (CodexBar unavailable — no limit reading)")
         return
 
-    if args.cmd == "usage":
+    if args.cmd == "check":
         usage_report()
         return
 
@@ -589,7 +591,7 @@ def main():
         return
 
     if args.cmd is not None:
-        ap.error(f"unknown subcommand '{args.cmd}' — valid: update, usage, report, help")
+        ap.error(f"unknown subcommand '{args.cmd}' — valid: update, check, report, help")
 
     if args.record_limits:
         email, s = record_limits(timeline)

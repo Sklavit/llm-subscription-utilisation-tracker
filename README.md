@@ -22,12 +22,12 @@ Everything lives in `~/.claude-usage-archive/`:
 
 | File | Purpose |
 |------|---------|
-| `track.py` | the tracker (installed copy) |
+| `usage.py` | the tracker (installed copy) |
 | `weekly.json` | the durable archive — per week × account × model token sums. **Never shrinks.** |
 | `account_timeline.json` | timestamped record of which account was active; drives the per-account split |
 | `scan.log` / `account.log` | output of the scheduled LaunchAgents |
 
-## `usage` — % of subscription limit consumed
+## `check` — % of subscription limit consumed
 
 > Ask for **"usage"** to see *% of your weekly limit consumed, per week, per account.*
 
@@ -39,8 +39,8 @@ tokens or backfilled. Instead, the scheduler **samples the live % every 30 minut
 `~/.claude-usage-archive/limit_samples.jsonl`. History accrues from now on.
 
 ```bash
-/usr/bin/python3 ~/.claude-usage-archive/track.py --usage           # the report
-/usr/bin/python3 ~/.claude-usage-archive/track.py --record-limits   # sample now
+uv run ~/.claude-usage-archive/usage.py check              # the report
+uv run ~/.claude-usage-archive/usage.py --record-limits    # sample now
 ```
 
 It reports, per account, the **peak % of the weekly limit** reached in each weekly
@@ -49,7 +49,7 @@ the latest live session (5-hour) and weekly readings. The active Claude Code acc
 is whatever's sampled; switching accounts is captured automatically over time.
 
 Requires CodexBar installed (`brew install --cask steipete/tap/codexbar`) and logged
-in. Without it, token/cost tracking still works; only `--usage` is unavailable.
+in. Without it, token/cost tracking still works; only `check` is unavailable.
 
 ## Collected statistics (in this folder)
 
@@ -69,7 +69,7 @@ This is refreshed automatically by the daily LaunchAgent (via `--export-dir`). T
 refresh on demand:
 
 ```bash
-/usr/bin/python3 ~/.claude-usage-archive/track.py \
+uv run ~/.claude-usage-archive/usage.py \
   --export-dir $HOME/personal/personal_notes/_automation/claude-usage-tracker/data
 ```
 
@@ -92,7 +92,7 @@ refresh on demand:
 4. **Merge** — fresh aggregates are **max-merged** per `(week, account, model)` cell.
    While a week is still in the logs the value grows; once the logs age out, the last
    recorded value is frozen. History is monotonic and never lost.
-5. **Cost** — estimated from a Claude price table (`PRICING` dict in `track.py`).
+5. **Cost** — estimated from a Claude price table (`PRICING` dict in `usage.py`).
    You're on a subscription, so this is an **API-equivalent** figure: what the usage
    *would* cost at API list prices — a proxy for how hard you lean on the plan, not a
    real bill.
@@ -104,7 +104,7 @@ cd $HOME/personal/personal_notes/_automation/claude-usage-tracker
 ./install.sh
 ```
 
-This copies `track.py` to `~/.claude-usage-archive/`, generates the two LaunchAgent
+This copies `usage.py` to `~/.claude-usage-archive/`, generates the two LaunchAgent
 plists with your real home path, loads them, and runs an initial backfill.
 
 ## Scheduled jobs (LaunchAgents)
@@ -120,18 +120,25 @@ login switches between the daily scans.
 ## Manual use
 
 ```bash
-/usr/bin/python3 ~/.claude-usage-archive/track.py            # scan + merge + report
-/usr/bin/python3 ~/.claude-usage-archive/track.py --report   # print archive, no scan
-/usr/bin/python3 ~/.claude-usage-archive/track.py --by-model # per-model breakdown
-/usr/bin/python3 ~/.claude-usage-archive/track.py --csv ~/usage.csv   # export CSV
-/usr/bin/python3 ~/.claude-usage-archive/track.py --record-account    # sample account only
+uv run ~/.claude-usage-archive/usage.py                    # scan + merge + report
+uv run ~/.claude-usage-archive/usage.py report              # print archive, no scan
+uv run ~/.claude-usage-archive/usage.py check                # % of subscription limit
+uv run ~/.claude-usage-archive/usage.py update               # sample account + live limit %
+uv run ~/.claude-usage-archive/usage.py --by-model           # per-model breakdown
+uv run ~/.claude-usage-archive/usage.py --csv ~/usage.csv    # export CSV
+uv run ~/.claude-usage-archive/usage.py --record-account     # sample account only
 ```
 
-Uses the stable system `/usr/bin/python3` and only the standard library — no deps.
+Actions (`report`, `check`, `update`, `help`) are one word, no dashes. Options that
+take or toggle extra behavior (`--by-model`, `--csv`, `--record-account`) keep dashes.
+
+Scheduled LaunchAgents still run it via the stable system `/usr/bin/python3` (see
+below); manual/interactive use goes through `uv run`. Either way it's stdlib-only —
+no deps to resolve.
 
 ## Maintenance notes
 
-- **Pricing** — edit the `PRICING` dict at the top of `track.py`. Unknown models fall
+- **Pricing** — edit the `PRICING` dict at the top of `usage.py`. Unknown models fall
   back to the `sonnet` tier and are flagged in the output (e.g. `claude-fable-5`).
 - **Back up `weekly.json`** — it's the irreplaceable part. The script can rebuild
   recent weeks from logs, but weeks that have aged out only exist here.

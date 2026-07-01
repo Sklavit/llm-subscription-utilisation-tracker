@@ -403,11 +403,7 @@ def _bar(pct, width=20):
     return "█" * filled + "·" * (width - filled)
 
 
-def usage_report():
-    """Show % of subscription limit consumed, per weekly cycle, per account.
-
-    Built from live readings sampled by the scheduler (limit_samples.jsonl).
-    """
+def _load_limit_samples():
     samples = []
     try:
         with open(LIMITS_PATH) as f:
@@ -420,6 +416,30 @@ def usage_report():
                         continue
     except FileNotFoundError:
         pass
+    return samples
+
+
+def usage_report(timeline=None):
+    """Show % of subscription limit consumed, per weekly cycle, per account.
+
+    Built from live readings sampled by the scheduler (limit_samples.jsonl).
+    If the active account's latest reading is missing (or has no reset time —
+    what prints as "resets ?"), auto-sample once (same as `update`) before
+    reporting, since a stale/missing reset is exactly what a fresh sample fixes.
+    """
+    samples = _load_limit_samples()
+
+    if timeline is not None:
+        active_email, _ = current_account()
+        latest_active = max(
+            (s for s in samples if s.get("email") == active_email),
+            key=lambda s: s["t"], default=None,
+        )
+        if (latest_active is None
+                or latest_active.get("weekly_resets") is None
+                or latest_active.get("session_resets") is None):
+            record_limits(timeline)
+            samples = _load_limit_samples()
 
     have = [s for s in samples if s.get("weekly_pct") is not None]
     if not have:
@@ -535,15 +555,18 @@ def export_snapshot(archive, timeline, dirpath):
     with open(os.path.join(dirpath, "report.txt"), "w") as f:
         f.write(buf.getvalue())
 
-    # Subscription-limit history + the % usage report.
-    if os.path.exists(LIMITS_PATH):
-        shutil.copyfile(LIMITS_PATH, os.path.join(dirpath, "limit_samples.jsonl"))
+    # % usage report (may auto-sample a fresh reading — see usage_report docstring).
     ubuf = io.StringIO()
     ubuf.write(f"Generated: {stamp}\n")
     with contextlib.redirect_stdout(ubuf):
-        usage_report()
+        usage_report(timeline)
     with open(os.path.join(dirpath, "usage.txt"), "w") as f:
         f.write(ubuf.getvalue())
+
+    # Subscription-limit history, copied after usage_report() so any freshly
+    # auto-sampled reading is included in the snapshot.
+    if os.path.exists(LIMITS_PATH):
+        shutil.copyfile(LIMITS_PATH, os.path.join(dirpath, "limit_samples.jsonl"))
 
     print(f"Snapshot written -> {dirpath}")
 
@@ -576,7 +599,7 @@ def main():
         return
 
     if args.cmd == "check":
-        usage_report()
+        usage_report(timeline)
         return
 
     if args.cmd == "report":

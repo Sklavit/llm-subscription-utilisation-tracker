@@ -46,14 +46,22 @@ limit consumed per weekly cycle per account.
 
 - True "% of limit" **cannot** be computed from tokens: Anthropic publishes no fixed
   limit and stores no history. The only source is the live claude.ai endpoint.
-- We get it via the **CodexBar CLI** (`codexbar usage --provider claude --format json
-  --source oauth`), which owns the auth. Never try to read OAuth tokens / hit the
-  endpoint directly — let CodexBar do it.
+- **Primary source is Claude Code itself**: `claude auth status --json` (identity) +
+  `claude -p '/usage'` (limits, incl. the per-model weekly bucket). Same credential
+  store → the (account, reading) pair cannot diverge. Never try to read OAuth tokens
+  or hit the endpoint directly — go through the `claude` CLI.
+- **CodexBar is fallback only** (`--source oauth`). It may serve a *cached* account
+  after a login switch, so fallback readings are attributed by their weekly reset
+  anchor (reset time mod 7 days — a stable per-account fingerprint, `_anchor_key`),
+  not by trusting the logged-in email. Historically mislabelled samples were
+  retro-fixed this way on 2026-07-03 (marked `attr: anchor-retrofix`, original email
+  kept in `email_orig`; backup at `limit_samples.jsonl.bak-20260703`).
 - The 30-min agent samples it (`--record-limits`) into the append-only
   `~/.claude-usage-archive/limit_samples.jsonl`. It only accrues going forward; it
-  cannot be backfilled. Don't claim historical % before sampling began.
-- `--source oauth` reflects the currently-logged-in Claude Code account (paired with
-  the email from `~/.claude.json`). Each account is captured when it's the active one.
+  cannot be backfilled. Don't claim historical % before sampling began. Failed
+  attempts are recorded with an `err` field — never silently.
+- Each account is only captured while it's the logged-in one; the other account's
+  numbers stay frozen at their last reading until you switch back.
 
 ## Common tasks
 

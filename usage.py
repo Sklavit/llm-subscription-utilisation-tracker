@@ -32,10 +32,16 @@ import datetime as dt
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover — py<3.9
+    ZoneInfo = None
 
 HOME = os.path.expanduser("~")
 PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
@@ -43,7 +49,8 @@ CLAUDE_JSON = os.path.join(HOME, ".claude.json")
 ARCHIVE_DIR = os.path.join(HOME, ".claude-usage-archive")
 WEEKLY_PATH = os.path.join(ARCHIVE_DIR, "weekly.json")
 TIMELINE_PATH = os.path.join(ARCHIVE_DIR, "account_timeline.json")
-# Append-only time series of live subscription-limit readings (from CodexBar).
+# Append-only time series of live subscription-limit readings
+# (from `claude -p '/usage'`, with CodexBar as fallback).
 LIMITS_PATH = os.path.join(ARCHIVE_DIR, "limit_samples.jsonl")
 
 # Per-MILLION-token USD prices (API list prices; cache_5m=1.25x in, cache_1h=2x in, cache_read=0.1x in).
@@ -114,11 +121,32 @@ def account_for(ts_epoch, timeline):
     return chosen
 
 
-# ---------- live subscription-limit sampling (via CodexBar CLI) ----------
+# ---------- live subscription-limit sampling ----------
 # Anthropic publishes no fixed limit number and stores no history, so we cannot
-# compute "% of limit" from tokens. CodexBar's `usage` command queries the live
-# claude.ai limit endpoint (it owns the auth). We sample it on a schedule and
-# append each reading, building the history that nothing else keeps.
+# compute "% of limit" from tokens; only live readings work. Primary source is
+# Claude Code itself: `claude auth status --json` (identity) + `claude -p '/usage'`
+# (live limits, incl. the per-model weekly bucket). Both read the same credential
+# store, so the (account, reading) pair cannot diverge. Fallback: CodexBar CLI
+# (`--source oauth`) — but it may serve a *cached* account after a login switch,
+# so fallback readings are attributed by their weekly reset anchor instead of
+# trusted blindly (see _anchor_key).
+
+PLAN_NAMES = {"pro": "Claude Pro", "max": "Claude Max",
+              "team": "Claude Team", "enterprise": "Claude Enterprise"}
+
+
+def claude_bin():
+    candidates = [
+        "/opt/homebrew/bin/claude",          # Homebrew cask (stable symlink)
+        os.path.expanduser("~/.local/bin/claude"),
+        "/usr/local/bin/claude",
+        shutil.which("claude"),              # last: PATH may point at a session shim
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
 
 def codexbar_bin():
     candidates = [
@@ -133,48 +161,242 @@ def codexbar_bin():
     return None
 
 
-def sample_limits():
-    """Return live limit reading via CodexBar, or None if unavailable."""
+def _run(cmd, timeout):
+    """Run a command; return (stdout, error_string) — exactly one is set."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (subprocess.SubprocessError, OSError) as e:
+        return None, f"{os.path.basename(cmd[0])}: {e.__class__.__name__}: {e}"
+    if p.returncode != 0:
+        detail = (p.stderr or p.stdout or "").strip()[:200]
+        return None, f"{os.path.basename(cmd[0])} exit {p.returncode}: {detail}"
+    return p.stdout, None
+
+
+def auth_status():
+    """(email, plan) of the logged-in account, straight from Claude Code."""
+    cb = claude_bin()
+    if not cb:
+        return None, None
+    out, _ = _run([cb, "auth", "status", "--json"], 30)
+    if not out:
+        return None, None
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None, None
+    if not data.get("loggedIn"):
+        return None, None
+    plan = data.get("subscriptionType")
+    return data.get("email"), PLAN_NAMES.get(plan, plan)
+
+
+_USAGE_RE = re.compile(
+    r"^Current\s+(?P<scope>session|week\s*\((?P<bucket>[^)]+)\))\s*:\s*"
+    r"(?P<pct>\d+(?:\.\d+)?)\s*%\s*used"
+    r"(?:.*?\bresets\s+(?P<resets>.+?))?\s*$",
+    re.IGNORECASE | re.MULTILINE)
+
+_MONTHS = {m: i for i, m in enumerate(
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
+
+
+def _parse_reset_text(text, now_utc=None):
+    """'Jul 5 at 7am (Europe/London)' or '6:40pm (Europe/London)' -> ISO UTC 'Z'."""
+    if not text:
+        return None
+    m = re.search(
+        r"(?:(?P<mon>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+"
+        r"(?P<day>\d{1,2})\s+at\s+)?"
+        r"(?P<h>\d{1,2})(?::(?P<mi>\d{2}))?\s*(?P<ap>[ap]m)?\s*(?:\((?P<tz>[^)]+)\))?",
+        text.strip(), re.IGNORECASE)
+    if not m or (m.group("ap") is None and m.group("mi") is None):
+        return None  # no recognisable time-of-day
+    tzinfo = None
+    if m.group("tz") and ZoneInfo:
+        try:
+            tzinfo = ZoneInfo(m.group("tz").strip())
+        except Exception:
+            pass
+    if tzinfo is None:
+        tzinfo = dt.datetime.now().astimezone().tzinfo
+    now_local = (now_utc or dt.datetime.now(dt.timezone.utc)).astimezone(tzinfo)
+    h, mi = int(m.group("h")), int(m.group("mi") or 0)
+    ap = (m.group("ap") or "").lower()
+    if ap == "pm" and h != 12:
+        h += 12
+    if ap == "am" and h == 12:
+        h = 0
+    try:
+        if m.group("mon"):
+            d = now_local.replace(month=_MONTHS[m.group("mon").title()[:3]],
+                                  day=int(m.group("day")),
+                                  hour=h, minute=mi, second=0, microsecond=0)
+            if d < now_local - dt.timedelta(days=2):  # Dec -> Jan wrap
+                d = d.replace(year=d.year + 1)
+        else:
+            d = now_local.replace(hour=h, minute=mi, second=0, microsecond=0)
+            if d < now_local:  # time already passed today -> tomorrow
+                d += dt.timedelta(days=1)
+    except ValueError:
+        return None
+    return d.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def sample_limits_claude():
+    """Live limit reading via `claude -p '/usage'`. Returns (sample, err)."""
+    cb = claude_bin()
+    if not cb:
+        return None, "claude CLI not found"
+    out, err = _run([cb, "-p", "/usage"], 120)
+    if not out:
+        return None, err
+    now = dt.datetime.now(dt.timezone.utc)
+    s = {"src": "claude-cli"}
+    for m in _USAGE_RE.finditer(out):
+        pct = int(float(m.group("pct")))
+        iso = _parse_reset_text(m.group("resets"), now)
+        bucket = (m.group("bucket") or "").strip()
+        if m.group("scope").lower() == "session":
+            s["session_pct"], s["session_resets"] = pct, iso
+        elif bucket.lower() == "all models":
+            s["weekly_pct"], s["weekly_resets"] = pct, iso
+        elif bucket:
+            s["model_week"] = bucket
+            s["model_weekly_pct"], s["model_weekly_resets"] = pct, iso
+    if "weekly_pct" not in s and "session_pct" not in s:
+        head = " | ".join(out.strip().splitlines()[:3])[:200]
+        return None, f"claude -p /usage: unrecognised output: {head}"
+    return s, None
+
+
+def sample_limits_codexbar():
+    """Fallback reading via CodexBar. Returns (sample, err)."""
     cb = codexbar_bin()
     if not cb:
-        return None
+        return None, "codexbar not found"
+    out, err = _run([cb, "usage", "--provider", "claude", "--format", "json",
+                     "--source", "oauth"], 90)
+    if not out:
+        return None, err
     try:
-        out = subprocess.run(
-            [cb, "usage", "--provider", "claude", "--format", "json", "--source", "oauth"],
-            capture_output=True, text=True, timeout=90,
-        )
-        data = json.loads(out.stdout)
-    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
-        return None
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None, "codexbar: invalid JSON"
     if not isinstance(data, list) or not data:
-        return None
+        return None, "codexbar: empty response"
     entry = data[0] or {}
     usage = entry.get("usage") or {}
     if entry.get("error") or not usage:
-        return None
+        return None, f"codexbar: {json.dumps(entry.get('error'))[:200]}"
     prim = usage.get("primary") or {}
     sec = usage.get("secondary") or {}
     return {
+        "src": "codexbar",
         "plan": usage.get("loginMethod"),
         "session_pct": prim.get("usedPercent"),
         "session_resets": prim.get("resetsAt"),
         "weekly_pct": sec.get("usedPercent"),
         "weekly_resets": sec.get("resetsAt"),
-    }
+    }, None
+
+
+def sample_limits():
+    """Best available live reading: Claude Code CLI first, CodexBar fallback.
+
+    Returns (sample, err) — sample is None if both sources failed.
+    """
+    s, err1 = sample_limits_claude()
+    if s:
+        return s, None
+    s, err2 = sample_limits_codexbar()
+    if s:
+        return s, None
+    return None, "; ".join(e for e in (err1, err2) if e)
+
+
+def _snap_iso(iso):
+    """Normalise a reset timestamp to a 5-minute grid.
+
+    Absorbs both the API's :59:59 vs :00:00 second-jitter and the fact that
+    `/usage` *displays* times rounded down to the minute (17:59:59Z -> "6:59pm"
+    -> parsed 17:59:00Z), so readings of the same window always group together.
+    """
+    if not iso:
+        return None
+    try:
+        t = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return iso
+    epoch = round(t.timestamp() / 300) * 300
+    t = dt.datetime.fromtimestamp(epoch, dt.timezone.utc)
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _anchor_key(iso):
+    """Weekly reset anchor: minute-snapped epoch mod 7 days.
+
+    Each account's weekly window advances in exact 7-day steps, so this value is
+    a stable per-account fingerprint — the basis for (re)attributing readings.
+    """
+    snapped = _snap_iso(iso)
+    if not snapped:
+        return None
+    try:
+        t = dt.datetime.fromisoformat(snapped.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+    return int(t) % (7 * 86400)
+
+
+def _anchor_owner(weekly_resets):
+    """Which account owns this weekly reset anchor, judging from trusted samples."""
+    key = _anchor_key(weekly_resets)
+    if key is None:
+        return None
+    owners = {}
+    for s in _load_limit_samples():
+        trusted = s.get("src") == "claude-cli" or \
+            s.get("attr") in ("anchor-retrofix", "anchor-verified")
+        if trusted and s.get("email") and s.get("weekly_resets"):
+            k = _anchor_key(s["weekly_resets"])
+            if k is not None:
+                owners.setdefault(k, set()).add(s["email"])
+    emails = owners.get(key) or set()
+    return next(iter(emails)) if len(emails) == 1 else None
 
 
 def record_limits(timeline):
-    """Sample the active account + its live limit %, append to the time series."""
-    timeline, email = record_account(timeline)
+    """Sample the active account + its live limit %, append to the time series.
+
+    Failed readings are recorded too (with an `err` field) so gaps are explainable.
+    Returns (email, sample, err).
+    """
+    timeline, email_cfg = record_account(timeline)
     atomic_write(TIMELINE_PATH, timeline)
     now = dt.datetime.now(dt.timezone.utc)
+    email_auth, plan = auth_status()
+    email = email_auth or email_cfg
     rec = {"t": now.isoformat(), "iso_week": iso_week(now), "email": email}
-    s = sample_limits()
+    s, err = sample_limits()
     if s:
+        if s.get("src") == "claude-cli":
+            if plan:
+                s.setdefault("plan", plan)
+        else:
+            # CodexBar may serve a cached (stale) account — attribute by anchor.
+            owner = _anchor_owner(s.get("weekly_resets"))
+            if owner and owner != email:
+                rec["email"], rec["email_orig"] = owner, email
+            elif not owner:
+                rec["attr"] = "unverified"
         rec.update(s)
+    else:
+        rec["err"] = err or "no limit reading"
     with open(LIMITS_PATH, "a") as f:
         f.write(json.dumps(rec) + "\n")
-    return email, s
+    return rec["email"], s, err
 
 
 # ---------- pricing ----------
@@ -444,16 +666,17 @@ def usage_report(timeline=None):
     have = [s for s in samples if s.get("weekly_pct") is not None]
     if not have:
         print("No live limit readings yet.")
-        print("These accrue going forward — the 30-min scheduler samples them via CodexBar.")
+        print("These accrue going forward — the 30-min scheduler samples them from Claude Code.")
         print("Sample one now:  uv run ~/.claude-usage-archive/usage.py --record-limits")
         return
 
-    # Group into weekly cycles, keyed by (account, weekly_resets). Within a cycle the
-    # % only grows until reset, so max == the week's final utilisation.
+    # Group into weekly cycles, keyed by (account, weekly_resets). Reset times are
+    # minute-snapped so :59:59/:00:00 jitter doesn't split a cycle in two. Within a
+    # cycle the % only grows until reset, so max == the week's final utilisation.
     cycles = {}
     for s in have:
         email = s.get("email") or "unknown"
-        key = (email, s.get("weekly_resets"))
+        key = (email, _snap_iso(s.get("weekly_resets")))
         c = cycles.setdefault(key, {"peak": 0, "last": None, "last_t": "", "plan": s.get("plan")})
         c["peak"] = max(c["peak"], s["weekly_pct"])
         if s["t"] > c["last_t"]:
@@ -464,7 +687,7 @@ def usage_report(timeline=None):
         by_acct.setdefault(email, []).append((resets, c))
 
     print("\nSubscription limit utilisation — % of WEEKLY limit consumed per cycle")
-    print("(live readings via CodexBar; weekly window resets on your account's own schedule)\n")
+    print("(live readings via `claude -p /usage`; weekly window resets on your account's own schedule)\n")
     for email in sorted(by_acct):
         rows = sorted(by_acct[email], key=lambda r: (r[0] or ""), reverse=True)
         plan = next((c["plan"] for _, c in rows if c["plan"]), "?")
@@ -492,6 +715,9 @@ def usage_report(timeline=None):
             label = f"\033[1m{label} ◀ active\033[0m"
         print(f"\n  {label}")
         print(f"  - Current week: {s['weekly_pct']}% used (resets {weekly_reset})")
+        if s.get("model_weekly_pct") is not None:
+            print(f"  - Current week ({s.get('model_week', 'model')}): "
+                  f"{s['model_weekly_pct']}% used")
         session_resets_iso = s.get("session_resets")
         session_expired = False
         if session_resets_iso:
@@ -579,7 +805,8 @@ def main():
                     help="subcommand: update | check | report")
     ap.add_argument("--record-account", action="store_true", help="only sample the active account")
     ap.add_argument("--record-limits", action="store_true",
-                    help="sample active account + live subscription-limit %% (via CodexBar)")
+                    help="sample active account + live subscription-limit %% "
+                         "(via claude CLI, CodexBar fallback)")
     ap.add_argument("--by-model", action="store_true", help="include per-model breakdown")
     ap.add_argument("--csv", metavar="PATH", help="export archive to CSV")
     ap.add_argument("--export-dir", metavar="DIR",
@@ -590,12 +817,15 @@ def main():
     timeline = load_json(TIMELINE_PATH, [])
 
     if args.cmd == "update":
-        email, s = record_limits(timeline)
+        email, s, err = record_limits(timeline)
         if s:
-            print(f"Updated. {email or 'unknown'}: weekly {s['weekly_pct']}%, "
-                  f"5h session {s['session_pct']}%")
+            extra = ""
+            if s.get("model_weekly_pct") is not None:
+                extra = f", {s.get('model_week', 'model')} week {s['model_weekly_pct']}%"
+            print(f"Updated. {email or 'unknown'}: weekly {s.get('weekly_pct')}%{extra}, "
+                  f"5h session {s.get('session_pct')}% [{s.get('src')}]")
         else:
-            print(f"Updated account: {email} (CodexBar unavailable — no limit reading)")
+            print(f"Updated account: {email} (no limit reading: {err})")
         return
 
     if args.cmd == "check":
@@ -617,12 +847,12 @@ def main():
         ap.error(f"unknown subcommand '{args.cmd}' — valid: update, check, report, help")
 
     if args.record_limits:
-        email, s = record_limits(timeline)
+        email, s, err = record_limits(timeline)
         if s:
-            print(f"{email or 'unknown'}: weekly {s['weekly_pct']}% used, "
-                  f"5h-session {s['session_pct']}% used")
+            print(f"{email or 'unknown'}: weekly {s.get('weekly_pct')}% used, "
+                  f"5h-session {s.get('session_pct')}% used [{s.get('src')}]")
         else:
-            print(f"Active account: {email} (no live limit reading available)")
+            print(f"Active account: {email} (no limit reading: {err})")
         return
 
     timeline, email = record_account(timeline)

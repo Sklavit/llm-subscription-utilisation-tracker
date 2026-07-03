@@ -33,10 +33,25 @@ Everything lives in `~/.claude-usage-archive/`:
 
 Anthropic publishes **no fixed limit number** and stores **no history** of your
 utilisation — the live % only exists behind the authenticated claude.ai endpoint
-(what Claude Code's `/usage` and CodexBar show). So this can't be reconstructed from
-tokens or backfilled. Instead, the scheduler **samples the live % every 30 minutes**
-(via the CodexBar CLI, which owns the auth) and appends each reading to
-`~/.claude-usage-archive/limit_samples.jsonl`. History accrues from now on.
+(what Claude Code's `/usage` shows). So this can't be reconstructed from tokens or
+backfilled. Instead, the scheduler **samples the live % every 30 minutes** and
+appends each reading to `~/.claude-usage-archive/limit_samples.jsonl`. History
+accrues from now on.
+
+Sampling sources, in order:
+
+1. **Claude Code itself** (primary): `claude auth status --json` for the account
+   identity + `claude -p '/usage'` for the live limits (session, weekly, and the
+   per-model weekly bucket, e.g. Fable). Both read the same credential store, so the
+   (account, reading) pair cannot diverge. Samples carry `"src": "claude-cli"`.
+2. **CodexBar CLI** (fallback, `"src": "codexbar"`): kept because it worked before,
+   but its `--source oauth` path may serve a *cached* account after a login switch.
+   Fallback readings are therefore attributed by their **weekly reset anchor** (each
+   account's weekly window advances in exact 7-day steps, so the reset time mod 7
+   days is a per-account fingerprint), not by trusting the logged-in email.
+
+Failed sampling attempts are recorded too, with an `err` field, so gaps in the
+series are explainable rather than silent.
 
 ```bash
 uv run ~/.claude-usage-archive/usage.py check              # the report
@@ -48,8 +63,8 @@ cycle (the weekly window resets on your account's own schedule, not Mon–Sun), 
 the latest live session (5-hour) and weekly readings. The active Claude Code account
 is whatever's sampled; switching accounts is captured automatically over time.
 
-Requires CodexBar installed (`brew install --cask steipete/tap/codexbar`) and logged
-in. Without it, token/cost tracking still works; only `check` is unavailable.
+Requires the `claude` CLI (always present on this machine). CodexBar
+(`brew install --cask steipete/tap/codexbar`) is optional — only used as fallback.
 
 ## Collected statistics (in this folder)
 

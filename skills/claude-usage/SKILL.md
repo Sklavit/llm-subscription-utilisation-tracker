@@ -25,10 +25,12 @@ uv run ~/.claude-usage-archive/usage.py --record-limits    # sample now
 ```
 
 True % can't come from tokens (Anthropic publishes no fixed limit, stores no history).
-It's sampled live from the CodexBar CLI every 30 min into `limit_samples.jsonl` and
-accrues going forward — **not backfillable**. Report shows peak % of the weekly limit
-per weekly cycle per account, plus latest session (5h) + weekly readings. Needs
-CodexBar installed and logged in.
+It's sampled live every 30 min into `limit_samples.jsonl` and accrues going forward —
+**not backfillable**. Primary source: `claude auth status --json` + `claude -p '/usage'`
+(same credential store, so account and reading always match; includes the per-model
+weekly bucket). Fallback: CodexBar CLI — its oauth path can serve a cached account, so
+fallback readings are re-attributed by weekly reset anchor. Report shows peak % of the
+weekly limit per weekly cycle per account, plus latest session (5h) + weekly readings.
 
 ## Read token usage / cost
 

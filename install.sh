@@ -32,6 +32,7 @@ cat > "$AGENTS_DIR/$SCAN_LABEL.plist" <<PLIST
     <array>
         <string>$PY</string>
         <string>$ARCHIVE_DIR/usage.py</string>
+        <string>scan</string>
         <string>--export-dir</string>
         <string>$EXPORT_DIR</string>
     </array>
@@ -81,7 +82,7 @@ cp "$AGENTS_DIR/$SCAN_LABEL.plist" "$HERE/launchagents/" 2>/dev/null || true
 cp "$AGENTS_DIR/$ACCT_LABEL.plist" "$HERE/launchagents/" 2>/dev/null || true
 
 echo "==> Initial backfill + stats snapshot to $EXPORT_DIR"
-"$PY" "$ARCHIVE_DIR/usage.py" --export-dir "$EXPORT_DIR"
+"$PY" "$ARCHIVE_DIR/usage.py" scan --export-dir "$EXPORT_DIR"
 
 echo
 echo "Done. Loaded agents:"

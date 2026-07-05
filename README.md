@@ -84,7 +84,7 @@ This is refreshed automatically by the daily LaunchAgent (via `--export-dir`). T
 refresh on demand:
 
 ```bash
-uv run ~/.claude-usage-archive/usage.py \
+uv run ~/.claude-usage-archive/usage.py scan \
   --export-dir $HOME/personal/personal_notes/_automation/claude-usage-tracker/data
 ```
 
@@ -126,7 +126,7 @@ plists with your real home path, loads them, and runs an initial backfill.
 
 | Label | Schedule | Action |
 |-------|----------|--------|
-| `com.sklavit.claude-usage.scan` | daily 09:05 + on login | full scan + merge + report → `scan.log` |
+| `com.sklavit.claude-usage.scan` | daily 09:05 + on login | full scan + merge + `data/` snapshot → `scan.log` |
 | `com.sklavit.claude-usage.account` | every 30 min + on login | sample active account → timeline (cheap) |
 
 The frequent account sampler is what makes the per-account split accurate: it notices
@@ -135,17 +135,20 @@ login switches between the daily scans.
 ## Manual use
 
 ```bash
-uv run ~/.claude-usage-archive/usage.py                    # scan + merge + report
-uv run ~/.claude-usage-archive/usage.py report              # print archive, no scan
-uv run ~/.claude-usage-archive/usage.py check                # % of subscription limit
-uv run ~/.claude-usage-archive/usage.py update               # sample account + live limit %
-uv run ~/.claude-usage-archive/usage.py --by-model           # per-model breakdown
-uv run ~/.claude-usage-archive/usage.py --csv ~/usage.csv    # export CSV
-uv run ~/.claude-usage-archive/usage.py --record-account     # sample account only
+uv run ~/.claude-usage-archive/usage.py                      # scan + merge, then `check` view
+uv run ~/.claude-usage-archive/usage.py scan                  # same as bare
+uv run ~/.claude-usage-archive/usage.py check                 # % of subscription limit (no scan)
+uv run ~/.claude-usage-archive/usage.py report                # token/cost archive, no scan
+uv run ~/.claude-usage-archive/usage.py update                # sample account + live limit %
+uv run ~/.claude-usage-archive/usage.py report --by-model     # per-model breakdown
+uv run ~/.claude-usage-archive/usage.py scan --csv ~/usage.csv  # export CSV
+uv run ~/.claude-usage-archive/usage.py --record-account      # sample account only
 ```
 
-Actions (`report`, `check`, `update`, `help`) are one word, no dashes. Options that
-take or toggle extra behavior (`--by-model`, `--csv`, `--record-account`) keep dashes.
+Actions (`scan`, `check`, `report`, `update`, `help`) are one word, no dashes; bare
+invocation defaults to `scan` (collect everything, then print the `check` view — the
+token/cost table lives under `report`). Options that take or toggle extra behavior
+(`--by-model`, `--csv`, `--record-account`) keep dashes.
 
 Scheduled LaunchAgents still run it via the stable system `/usr/bin/python3` (see
 below); manual/interactive use goes through `uv run`. Either way it's stdlib-only —

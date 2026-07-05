@@ -17,13 +17,14 @@ account was active at each message's timestamp. All history before the first run
 is attributed to whatever account is active on that first run.
 
 Usage:
-  uv run usage.py                  # sample account + scan logs + merge + report
-  uv run usage.py report           # just print the archive (no scan)
-  uv run usage.py check            # % of subscription limit consumed, per account
+  uv run usage.py                  # scan logs + merge into archive, then print `check`
+  uv run usage.py scan             # same as bare
+  uv run usage.py check            # % of subscription limit consumed, per account (no scan)
+  uv run usage.py report           # print the token/cost archive (no scan)
   uv run usage.py update           # sample active account + live limit % (fast; for frequent timers)
   uv run usage.py --record-account # only sample the active account
-  uv run usage.py --csv out.csv    # also export the archive as CSV
-  uv run usage.py --by-model       # include per-model breakdown in the report
+  uv run usage.py scan --csv out.csv    # also export the archive as CSV
+  uv run usage.py report --by-model     # per-model breakdown of the token archive
 """
 
 import argparse
@@ -802,7 +803,7 @@ def export_snapshot(archive, timeline, dirpath):
 def main():
     ap = argparse.ArgumentParser(description="Persistent weekly Claude Code usage tracker.")
     ap.add_argument("cmd", nargs="?",
-                    help="subcommand: update | check | report")
+                    help="subcommand: scan (default) | check | update | report")
     ap.add_argument("--record-account", action="store_true", help="only sample the active account")
     ap.add_argument("--record-limits", action="store_true",
                     help="sample active account + live subscription-limit %% "
@@ -843,8 +844,8 @@ def main():
         ap.print_help()
         return
 
-    if args.cmd is not None:
-        ap.error(f"unknown subcommand '{args.cmd}' — valid: update, check, report, help")
+    if args.cmd not in (None, "scan"):
+        ap.error(f"unknown subcommand '{args.cmd}' — valid: check, update, scan, report, help")
 
     if args.record_limits:
         email, s, err = record_limits(timeline)
@@ -872,7 +873,8 @@ def main():
         print(f"Note: assumed '{DEFAULT_TIER}' pricing for unknown model(s): "
               f"{', '.join(sorted(unpriced))}")
 
-    report(archive, by_model=args.by_model)
+    # Scan output is the `check` view; the token/cost table lives under `report`.
+    usage_report(timeline)
     if args.csv:
         export_csv(archive, args.csv)
     if args.export_dir:

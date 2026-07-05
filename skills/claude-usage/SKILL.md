@@ -35,12 +35,13 @@ weekly limit per weekly cycle per account, plus latest session (5h) + weekly rea
 ## Read token usage / cost
 
 ```bash
-uv run ~/.claude-usage-archive/usage.py report      # whole archive
-uv run ~/.claude-usage-archive/usage.py --by-model  # + per-model rows
-uv run ~/.claude-usage-archive/usage.py --csv ~/usage.csv
+uv run ~/.claude-usage-archive/usage.py report             # whole archive
+uv run ~/.claude-usage-archive/usage.py report --by-model  # + per-model rows
+uv run ~/.claude-usage-archive/usage.py scan --csv ~/usage.csv
 ```
 
-`report` does NOT rescan; the bare command (no args) scans logs, merges, and prints.
+`report` does NOT rescan. The bare command (same as `scan`) scans logs and merges
+into the archive, then prints the `check` view rather than the token table.
 
 A read-only snapshot is also mirrored into the project's `data/` folder
 (`weekly.json`, `weekly.csv`, `report.txt`, `account_timeline.json`) by the daily agent
@@ -66,7 +67,7 @@ via `--export-dir`. Use those for quick reading/backup; the authoritative archiv
 ## Troubleshoot
 
 - **No new data:** check `~/.claude-usage-archive/scan.log`. Confirm agents loaded
-  (`launchctl list | grep claude-usage`). Re-run the bare command manually.
+  (`launchctl list | grep claude-usage`). Re-run `scan` manually.
 - **Account split looks wrong:** inspect `~/.claude-usage-archive/account_timeline.json`.
   Switches are only caught when the 30-min sampler runs while that account is active.
 

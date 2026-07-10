@@ -59,9 +59,13 @@ uv run ~/.claude-usage-archive/usage.py --record-limits    # sample now
 ```
 
 It reports, per account, the **peak % of the weekly limit** reached in each weekly
-cycle (the weekly window resets on your account's own schedule, not Mon–Sun), plus
-the latest live session (5-hour) and weekly readings. The active Claude Code account
-is whatever's sampled; switching accounts is captured automatically over time.
+cycle, plus a **daily burn** view (share of the weekly limit spent per day, ×7, so
+100% is the break-even pace) and the latest live session (5-hour) and weekly
+readings. Cycles are split on resets **detected in the readings**, not on the
+reported reset time — the provider moves the weekly window on its own schedule, so a
+fall of ≥3 points (or to zero) is treated as a reset. The active Claude Code account
+is whatever's sampled; switching accounts is captured automatically over time. See
+[docs/architecture.md](docs/architecture.md) for the details.
 
 Requires the `claude` CLI (always present on this machine). CodexBar
 (`brew install --cask steipete/tap/codexbar`) is optional — only used as fallback.
@@ -234,3 +238,16 @@ sudo launchctl print system/<label>
 - the `.log` files → "what was the actual output?"
 
 For your two tracker agents, the fastest health check is `launchctl list | grep claude-usage` — if the second column is `0` for both, they're running fine.
+## Documentation
+
+Deeper docs live in [`docs/`](docs/):
+
+- [Architecture](docs/architecture.md) — the scan → merge → cost pipeline, cycle
+  segmentation, and the daily burn rate.
+- [Data model](docs/data-model.md) — the files the tracker maintains and their schemas.
+
+See also [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Sergii Nechuiviter

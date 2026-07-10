@@ -10,7 +10,7 @@
         <string>$HOME/.claude-usage-archive/usage.py</string>
         <string>scan</string>
         <string>--export-dir</string>
-        <string>$HOME/personal/personal_notes/_automation/claude-usage-tracker/data</string>
+        <string>$HOME/personal/llm-subscription-utilisation-tracker/data</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>

@@ -85,7 +85,7 @@ refresh on demand:
 
 ```bash
 uv run ~/.claude-usage-archive/usage.py scan \
-  --export-dir $HOME/personal/personal_notes/_automation/claude-usage-tracker/data
+  --export-dir $HOME/personal/llm-subscription-utilisation-tracker/data
 ```
 
 > The `data/` copy is a snapshot for reading/backup. The **live, authoritative**
@@ -115,7 +115,7 @@ uv run ~/.claude-usage-archive/usage.py scan \
 ## Install
 
 ```bash
-cd $HOME/personal/personal_notes/_automation/claude-usage-tracker
+cd $HOME/personal/llm-subscription-utilisation-tracker
 ./install.sh
 ```
 

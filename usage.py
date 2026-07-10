@@ -626,6 +626,85 @@ def _bar(pct, width=20):
     return "█" * filled + "·" * (width - filled)
 
 
+def _rate_bar(pct, width=20):
+    """Bar for a daily burn rate, where 100% == exactly one seventh of the week."""
+    pct = max(0, pct or 0)
+    filled = min(width, round(pct / 100 * width))
+    bar = "█" * filled + "·" * (width - filled)
+    return f"{bar} ▲over" if pct > 100 else bar
+
+
+# A weekly reading only ever accrues within its window, so a fall means the
+# window restarted. Anthropic restarts it on its own schedule: the archive holds
+# windows zeroed mid-cycle with the *reported* `weekly_resets` unchanged, which
+# is why that timestamp can't segment cycles. Small dips are not resets though —
+# one account went 14% -> 12% across four days on an unchanged window — so a
+# drop only counts as a reset if it is large or lands on zero.
+RESET_DROP_MIN = 3
+
+
+def _is_reset(prev_pct, pct):
+    """True if the step prev_pct -> pct is a weekly window reset."""
+    if prev_pct is None or pct >= prev_pct:
+        return False
+    return (prev_pct - pct) >= RESET_DROP_MIN or pct == 0
+
+
+def _local_date(iso):
+    return dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().date()
+
+
+def _segment_cycles(rows):
+    """Split one account's time-ordered readings into cycles on *detected* resets.
+
+    Each cycle carries the last reset time it reported, for display only.
+    """
+    cycles = []
+    prev = None
+    for s in rows:
+        pct = s["weekly_pct"]
+        if prev is None or _is_reset(prev, pct):
+            cycles.append({"start_t": s["t"], "peak": 0, "last": None,
+                           "last_t": "", "plan": None, "resets": None})
+        c = cycles[-1]
+        c["peak"] = max(c["peak"], pct)
+        if s["t"] >= c["last_t"]:
+            c["last_t"], c["last"] = s["t"], pct
+            c["resets"] = s.get("weekly_resets")
+        if s.get("plan"):
+            c["plan"] = s["plan"]
+        prev = pct
+    return cycles
+
+
+def _daily_burn(rows):
+    """Weekly-limit % consumed per local day, keyed by date.
+
+    The day's burn rate is that share x 7: 100% means the day spent exactly one
+    seventh of the weekly budget, i.e. dead on pace; above 100% is overspending.
+    Deltas are summed within the day rather than read off as (today's peak -
+    yesterday's peak), so a reset landing mid-day cannot produce a negative day.
+    """
+    days = {}
+    prev = None
+    for s in rows:
+        pct = s["weekly_pct"]
+        reset = _is_reset(prev, pct)
+        if prev is None:
+            delta = 0          # nothing to measure against before the first reading
+        elif reset:
+            delta = pct        # whatever accrued since the window restarted
+        else:
+            delta = max(0, pct - prev)   # ignore sub-threshold dips
+        d = days.setdefault(_local_date(s["t"]),
+                            {"pct": 0, "peak": 0, "reset": False})
+        d["pct"] += delta
+        d["peak"] = max(d["peak"], pct)
+        d["reset"] = d["reset"] or reset
+        prev = pct
+    return days
+
+
 def _load_limit_samples():
     samples = []
     try:
@@ -671,32 +750,59 @@ def usage_report(timeline=None):
         print("Sample one now:  uv run ~/.claude-usage-archive/usage.py --record-limits")
         return
 
-    # Group into weekly cycles, keyed by (account, weekly_resets). Reset times are
-    # minute-snapped so :59:59/:00:00 jitter doesn't split a cycle in two. Within a
-    # cycle the % only grows until reset, so max == the week's final utilisation.
-    cycles = {}
-    for s in have:
-        email = s.get("email") or "unknown"
-        key = (email, _snap_iso(s.get("weekly_resets")))
-        c = cycles.setdefault(key, {"peak": 0, "last": None, "last_t": "", "plan": s.get("plan")})
-        c["peak"] = max(c["peak"], s["weekly_pct"])
-        if s["t"] > c["last_t"]:
-            c["last_t"], c["last"] = s["t"], s["weekly_pct"]
-
+    # Cycles are segmented on resets *detected in the readings* (see _is_reset),
+    # not on the reported reset time, which Anthropic moves unpredictably. Within
+    # a cycle the % only grows, so max == that window's final utilisation.
     by_acct = {}
-    for (email, resets), c in cycles.items():
-        by_acct.setdefault(email, []).append((resets, c))
+    for s in have:
+        by_acct.setdefault(s.get("email") or "unknown", []).append(s)
+    for email in by_acct:
+        by_acct[email].sort(key=lambda s: s["t"])
 
     print("\nSubscription limit utilisation — % of WEEKLY limit consumed per cycle")
-    print("(live readings via `claude -p /usage`; weekly window resets on your account's own schedule)\n")
+    print("(live readings via `claude -p /usage`; cycles split on observed resets,")
+    print(" since the reported reset time moves on Anthropic's own schedule)\n")
     for email in sorted(by_acct):
-        rows = sorted(by_acct[email], key=lambda r: (r[0] or ""), reverse=True)
-        plan = next((c["plan"] for _, c in rows if c["plan"]), "?")
+        cycles = _segment_cycles(by_acct[email])
+        plan = next((c["plan"] for c in reversed(cycles) if c["plan"]), "?")
         print(f"  {email}   [{plan}]")
-        print(f"    {'Week resets':<20}{'Peak':>6}  {'Utilisation':<22}")
-        for resets, c in rows:
-            print(f"    {_fmt_reset(resets):<20}{str(c['peak'])+'%':>6}  {_bar(c['peak'])}")
+        print(f"    {'Cycle began':<20}{'Peak':>6}  {'Utilisation':<22}")
+        for c in reversed(cycles):
+            print(f"    {_fmt_reset(c['start_t']):<20}{str(c['peak'])+'%':>6}  {_bar(c['peak'])}")
         print()
+
+    # Daily burn: share of the WEEKLY budget spent each day, x7 so that 100% is
+    # the break-even pace. Overspending shows up immediately, without waiting for
+    # the week to close.
+    print("  Daily burn — % of weekly limit spent per day, x7 (100% = on pace)\n")
+    today = dt.datetime.now().astimezone().date()
+    for email in sorted(by_acct):
+        days = _daily_burn(by_acct[email])
+        recent = sorted(d for d in days if (today - d).days < 14)
+        if not recent:
+            continue
+        print(f"  {email}")
+        print(f"    {'Day':<14}{'Used':>6}{'Rate':>7}  {'Burn':<26}")
+        for day in recent:
+            d = days[day]
+            rate = d["pct"] * 7
+            mark = " ↺" if d["reset"] else ""
+            if day == today:
+                mark += " (so far)"
+            label = day.strftime("%a %b %d")
+            print(f"    {label:<14}{str(d['pct'])+'%':>6}{str(rate)+'%':>7}  "
+                  f"{_rate_bar(rate)}{mark}")
+        # Average over the calendar span, not over sampled days: a day the
+        # scheduler missed is still a day of the week's budget, and its usage
+        # lands on the next reading anyway. Today is partial, so it is excluded.
+        closed = [d for d in recent if d != today]
+        if closed:
+            span_days = (max(closed) - min(closed)).days + 1
+            avg = sum(days[d]["pct"] for d in closed) / span_days * 7
+            print(f"    {'average':<14}{'':>6}{str(round(avg))+'%':>7}  "
+                  f"{_rate_bar(avg)}")
+        print()
+    print("  ↺ = weekly window reset detected that day\n")
 
     # Latest live snapshot (session + weekly) per account.
     latest = {}

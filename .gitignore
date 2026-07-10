@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# Generated usage snapshots — contain account emails/UUIDs, keep out of the public repo
+/data/*
+!/data/.gitkeep

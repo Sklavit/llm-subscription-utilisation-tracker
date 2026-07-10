@@ -18,6 +18,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   week to close.
 
 ### Changed
+- Rewrote `README.md` as a standalone-project readme: removed vault-era framing and
+  hardcoded personal paths, generic clone/install instructions, and moved the
+  `launchd` cheat-sheet into `docs/launchd.md`. Repointed the stale source path in the
+  `claude-usage` skill to this repo.
 - Weekly cycles are now segmented on **resets detected in the readings**, not on the
   reported reset timestamp, which the provider moves on its own schedule. A fall in
   weekly utilisation of ≥3 points (or to zero) is treated as a window reset.

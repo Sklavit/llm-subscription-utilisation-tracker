@@ -6,7 +6,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCHIVE_DIR="$HOME/.claude-usage-archive"
 AGENTS_DIR="$HOME/Library/LaunchAgents"
-EXPORT_DIR="$HERE/data"   # collected stats are mirrored here (inside this notes folder)
+EXPORT_DIR="$HERE/data"   # human-readable snapshot is mirrored here (git-ignored)
 PY="/usr/bin/python3"   # system python (survives Homebrew upgrades); script is stdlib-only
 UID_NUM="$(id -u)"
 

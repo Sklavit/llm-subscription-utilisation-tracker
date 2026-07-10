@@ -6,16 +6,18 @@ description: Report, maintain, or troubleshoot the persistent Claude Code usage 
 # Claude Code Usage Archive
 
 A persistent, append-only weekly archive of Claude Code token usage and estimated
-API-equivalent cost, split per account. Located at `~/.claude-usage-archive/`; the
-source-of-truth project lives at
-`$HOME/personal/personal_notes/_automation/claude-usage-tracker/`.
+API-equivalent cost, split per account. The runtime archive is at
+`~/.claude-usage-archive/` (override with `CLAUDE_USAGE_ARCHIVE`); the source-of-truth
+project is the [llm-subscription-utilisation-tracker](https://github.com/Sklavit/llm-subscription-utilisation-tracker)
+repo (cloned locally at `~/personal/llm-subscription-utilisation-tracker/`).
 
 ## Background the user usually wants
 
 Claude Code deletes transcripts (`~/.claude/projects/**/*.jsonl`) after
 `cleanupPeriodDays` (default 30). `ccusage` and CodexBar can only read what's still on
 disk, so they max out at ~30 days / ~2 calendar months. This archive snapshots the
-aggregates so history survives the cleanup. The user has set `cleanupPeriodDays: 365`.
+aggregates so history survives the cleanup. Raising `cleanupPeriodDays` (e.g. to 365)
+gives the archive more raw logs to draw from.
 
 ## "usage" → % of subscription limit consumed
 

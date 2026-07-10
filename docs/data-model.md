@@ -1,9 +1,9 @@
 # Data model
 
-All state lives under the runtime archive `~/.claude-usage-archive/`. A read-only
-snapshot of the human-facing files is mirrored into this repo's `data/` via
-`--export-dir` — but that directory is **git-ignored** because these files embed
-account emails and UUIDs.
+All state lives under the runtime archive `~/.claude-usage-archive/` (override with
+the `CLAUDE_USAGE_ARCHIVE` env var). A read-only snapshot of the human-facing files
+is mirrored into this repo's `data/` via `--export-dir` — but that directory is
+**git-ignored** because these files embed account emails and UUIDs.
 
 > The authoritative, must-never-shrink archive is
 > `~/.claude-usage-archive/weekly.json`. The `data/` copy is for reading and backup.

@@ -126,6 +126,31 @@ cd $HOME/personal/llm-subscription-utilisation-tracker
 This copies `usage.py` to `~/.claude-usage-archive/`, generates the two LaunchAgent
 plists with your real home path, loads them, and runs an initial backfill.
 
+## Configuration
+
+Data locations default to the paths above and can be overridden with environment
+variables — no source edit needed:
+
+| Variable | Overrides | Default |
+|---|---|---|
+| `CLAUDE_USAGE_ARCHIVE` | where the durable archive + limit series live | `~/.claude-usage-archive` |
+| `CLAUDE_PROJECTS_DIR` | where Claude Code transcripts are read from | `~/.claude/projects` |
+
+```bash
+# Keep the archive in a synced folder instead of the home dir:
+CLAUDE_USAGE_ARCHIVE=~/Sync/claude-usage uv run usage.py
+```
+
+To make it permanent for the scheduled jobs, add an `EnvironmentVariables` dict to
+the LaunchAgent plists (or export the var in the LaunchAgent's environment). The
+`--export-dir` flag independently controls where the human-readable snapshot is
+mirrored, separate from the archive location.
+
+> Packaging: `pyproject.toml` makes this `pip`/`uv`-installable and exposes a
+> `claude-usage-tracker` console command (`pip install .` then
+> `claude-usage-tracker check`). Installing is optional — `uv run usage.py` needs
+> nothing.
+
 ## Scheduled jobs (LaunchAgents)
 
 | Label | Schedule | Action |

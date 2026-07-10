@@ -9,6 +9,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Standalone repository scaffolding: `LICENSE` (MIT), `CHANGELOG.md`,
   `CONTRIBUTING.md`, `.editorconfig`, and a `docs/` set (architecture, data model).
+- `pyproject.toml` — installable via `pip`/`uv` with a `claude-usage-tracker`
+  console entry point (still zero runtime dependencies).
+- Configurable data locations via the `CLAUDE_USAGE_ARCHIVE` and
+  `CLAUDE_PROJECTS_DIR` environment variables (defaults unchanged).
 - **Daily burn** view — the share of the weekly limit spent each local day, ×7, so
   100% is the break-even pace and overspending is visible without waiting for the
   week to close.

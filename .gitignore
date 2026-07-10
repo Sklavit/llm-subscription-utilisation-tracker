@@ -4,3 +4,9 @@ __pycache__/
 # Generated usage snapshots — contain account emails/UUIDs, keep out of the public repo
 /data/*
 !/data/.gitkeep
+
+# Python build artifacts
+/dist/
+/build/
+*.egg-info/
+.ruff_cache/

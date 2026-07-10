@@ -45,9 +45,15 @@ except ImportError:  # pragma: no cover — py<3.9
     ZoneInfo = None
 
 HOME = os.path.expanduser("~")
-PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
+# Data locations are overridable by env var so the archive can live elsewhere
+# (e.g. a synced folder) without editing this file; defaults are unchanged.
+#   CLAUDE_USAGE_ARCHIVE — where the durable archive + limit series are kept
+#   CLAUDE_PROJECTS_DIR  — where Claude Code transcripts are read from
+PROJECTS_DIR = os.environ.get("CLAUDE_PROJECTS_DIR") or \
+    os.path.join(HOME, ".claude", "projects")
 CLAUDE_JSON = os.path.join(HOME, ".claude.json")
-ARCHIVE_DIR = os.path.join(HOME, ".claude-usage-archive")
+ARCHIVE_DIR = os.environ.get("CLAUDE_USAGE_ARCHIVE") or \
+    os.path.join(HOME, ".claude-usage-archive")
 WEEKLY_PATH = os.path.join(ARCHIVE_DIR, "weekly.json")
 TIMELINE_PATH = os.path.join(ARCHIVE_DIR, "account_timeline.json")
 # Append-only time series of live subscription-limit readings

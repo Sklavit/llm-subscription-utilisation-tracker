@@ -5,7 +5,7 @@ issues are welcome but kept simple.
 
 ## Ground rules
 
-- **Standard library only.** `usage.py` deliberately has no third-party dependencies
+- **Standard library only.** `budget.py` deliberately has no third-party dependencies
   so it runs anywhere with a modern Python and needs no virtualenv. Please keep it
   that way unless there's a compelling reason.
 - **Python 3.10+.**
@@ -17,12 +17,12 @@ issues are welcome but kept simple.
 
 ```bash
 # One-shot report from the current archive (no install required):
-uv run usage.py            # scan + merge, then the summary view
-uv run usage.py check      # % of subscription limit consumed
-uv run usage.py report     # token/cost archive
+uv run budget.py            # scan + merge, then the summary view
+uv run budget.py check      # % of subscription limit consumed
+uv run budget.py report     # token/cost archive
 ```
 
-`uv run` is convenient but optional; `python3 usage.py ...` works identically.
+`uv run` is convenient but optional; `python3 budget.py ...` works identically.
 
 ## Data & privacy
 
@@ -33,7 +33,7 @@ runtime archive lives outside the repo at `~/.claude-usage-archive/`.
 
 ## Style
 
-- Match the existing style in `usage.py`: small module-level functions, docstrings
+- Match the existing style in `budget.py`: small module-level functions, docstrings
   that explain *why*, comments reserved for non-obvious reasoning.
 - Keep the CLI subcommands and their output stable; they are consumed by the
   scheduled LaunchAgents and the `claude-usage` skill.

@@ -1,6 +1,6 @@
 # Architecture
 
-The tracker is a single stdlib Python script (`usage.py`) plus two macOS
+The tracker is a single stdlib Python script (`budget.py`) plus two macOS
 LaunchAgents that run it on a schedule. It has two largely independent jobs:
 
 1. **Token/cost accounting** — how much you used, from Claude Code's transcripts.
@@ -37,7 +37,7 @@ Key properties:
   run records the active account into the timeline and messages are attributed by
   timestamp. Consequence: **all history before the first run collapses onto whichever
   account is active on that first run** — it genuinely cannot be split after the fact.
-- **Cost is API-equivalent.** Estimated from a price table in `usage.py`. On a
+- **Cost is API-equivalent.** Estimated from a price table in `budget.py`. On a
   subscription this is *what the usage would cost at API list prices* — a proxy for how
   hard you lean on the plan, not a real bill.
 
@@ -75,7 +75,7 @@ the days that happened to be sampled; the current day is excluded as partial.
 
 ## Scheduling
 
-`install.sh` deploys `usage.py` to `~/.claude-usage-archive/` and installs two
+`install.sh` deploys `budget.py` to `~/.claude-usage-archive/` and installs two
 LaunchAgents:
 
 - **scan** (daily) — full transcript scan + merge, and a `--export-dir` snapshot of

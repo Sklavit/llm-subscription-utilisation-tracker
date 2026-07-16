@@ -7,10 +7,10 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>$HOME/.claude-usage-archive/usage.py</string>
+        <string>/Users/sergii/.claude-usage-archive/budget.py</string>
         <string>scan</string>
         <string>--export-dir</string>
-        <string>$HOME/personal/llm-subscription-utilisation-tracker/data</string>
+        <string>/Users/sergii/personal/llm-subscription-utilisation-tracker/data</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -19,7 +19,7 @@
     </dict>
     <key>RunAtLoad</key>
     <true/>
-    <key>StandardOutPath</key><string>$HOME/.claude-usage-archive/scan.log</string>
-    <key>StandardErrorPath</key><string>$HOME/.claude-usage-archive/scan.log</string>
+    <key>StandardOutPath</key><string>/Users/sergii/.claude-usage-archive/scan.log</string>
+    <key>StandardErrorPath</key><string>/Users/sergii/.claude-usage-archive/scan.log</string>
 </dict>
 </plist>

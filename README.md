@@ -22,7 +22,7 @@ history for) is sampled on a schedule so utilisation history accrues from first 
 
 ## Requirements
 
-- **Python 3.10+** — run via [`uv`](https://docs.astral.sh/uv/) (`uv run usage.py`) or
+- **Python 3.10+** — run via [`uv`](https://docs.astral.sh/uv/) (`uv run budget.py`) or
   any `python3`. No third-party packages.
 - **Claude Code** installed, with transcripts under `~/.claude/`.
 - The **`claude` CLI** — required only for live subscription-limit sampling; token/cost
@@ -40,9 +40,9 @@ cd llm-subscription-utilisation-tracker
 ./install.sh
 ```
 
-`install.sh` deploys `usage.py` to the runtime archive (`~/.claude-usage-archive/`),
+`install.sh` deploys `budget.py` to the runtime archive (`~/.claude-usage-archive/`),
 generates + loads the two LaunchAgents, and runs an initial backfill. Re-run it any
-time after editing `usage.py`.
+time after editing `budget.py`.
 
 Prefer no background jobs? Skip the installer and just run the script manually (below).
 
@@ -51,21 +51,21 @@ Prefer no background jobs? Skip the installer and just run the script manually (
 Run from the cloned repo:
 
 ```bash
-uv run usage.py                       # scan + merge, then the `check` view
-uv run usage.py scan                  # same as bare
-uv run usage.py check                 # % of subscription limit (no scan)
-uv run usage.py report                # token/cost archive, no scan
-uv run usage.py report --by-model     # per-model breakdown
-uv run usage.py update                # sample account + live limit %
-uv run usage.py scan --csv usage.csv  # export CSV
-uv run usage.py --record-limits       # sample the live limit % now
+uv run budget.py                       # scan + merge, then the `check` view
+uv run budget.py scan                  # same as bare
+uv run budget.py check                 # % of subscription limit (no scan)
+uv run budget.py report                # token/cost archive, no scan
+uv run budget.py report --by-model     # per-model breakdown
+uv run budget.py update                # sample account + live limit %
+uv run budget.py scan --csv usage.csv  # export CSV
+uv run budget.py --record-limits       # sample the live limit % now
 ```
 
 Actions (`scan`, `check`, `report`, `update`, `help`) are one word, no dashes; bare
 invocation defaults to `scan` (collect everything, then print the `check` view — the
 token/cost table lives under `report`). Options that take or toggle extra behaviour
 (`--by-model`, `--csv`, `--export-dir`, `--record-limits`) keep dashes. `python3
-usage.py ...` works identically if you don't use `uv`.
+budget.py ...` works identically if you don't use `uv`.
 
 The scheduled LaunchAgents run the deployed copy via the stable system
 `/usr/bin/python3` (survives Homebrew upgrades); it's stdlib-only either way.
@@ -82,7 +82,7 @@ variables — no source edit needed:
 
 ```bash
 # Keep the archive in a synced folder instead of the home dir:
-CLAUDE_USAGE_ARCHIVE=~/Sync/claude-usage uv run usage.py
+CLAUDE_USAGE_ARCHIVE=~/Sync/claude-usage uv run budget.py
 ```
 
 For the scheduled jobs, LaunchAgents don't inherit your shell environment — add an
@@ -92,7 +92,7 @@ mirrored, separate from the archive location.
 
 `pyproject.toml` also makes the tool `pip`/`uv`-installable with a
 `claude-usage-tracker` console command (`pip install .` → `claude-usage-tracker
-check`). Installing is optional — `uv run usage.py` needs nothing.
+check`). Installing is optional — `uv run budget.py` needs nothing.
 
 ## What it produces
 
@@ -165,7 +165,7 @@ points (or to zero) is treated as a reset. See
 4. **Merge** — fresh aggregates are **max-merged** per `(week, account, model)` cell.
    While a week is still in the logs the value grows; once the logs age out the last
    recorded value is frozen. History is monotonic and never lost.
-5. **Cost** — estimated from a price table (`PRICING` dict in `usage.py`). On a
+5. **Cost** — estimated from a price table (`PRICING` dict in `budget.py`). On a
    subscription this is an **API-equivalent** figure: what the usage *would* cost at
    API list prices — a proxy for how hard you lean on the plan, not a real bill.
 
@@ -182,11 +182,11 @@ switches between the daily scans. For inspecting and debugging the agents, see
 
 ## Maintenance
 
-- **Pricing** — edit the `PRICING` dict at the top of `usage.py`. Unknown models fall
+- **Pricing** — edit the `PRICING` dict at the top of `budget.py`. Unknown models fall
   back to the `sonnet` tier and are flagged in the output.
 - **Back up `weekly.json`** — it's the irreplaceable part. The script can rebuild
   recent weeks from logs, but weeks that have aged out only exist there.
-- **Editing the script** — edit `usage.py` in the repo (source of truth), then re-run
+- **Editing the script** — edit `budget.py` in the repo (source of truth), then re-run
   `./install.sh` to redeploy it to the archive directory.
 - **Retention** — set `~/.claude/settings.json → "cleanupPeriodDays": 365` to keep raw
   logs for a year, giving the archive more to draw from.

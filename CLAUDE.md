@@ -10,8 +10,8 @@ Code usage** (tokens + estimated API-equivalent cost), split per account. Read
 
 ## Source of truth vs. deployed copy
 
-- **This folder is the source of truth.** Edit `usage.py` and the plists *here*.
-- The *running* copy lives at `~/.claude-usage-archive/usage.py`, and the *active*
+- **This folder is the source of truth.** Edit `budget.py` and the plists *here*.
+- The *running* copy lives at `~/.claude-usage-archive/budget.py`, and the *active*
   LaunchAgents live at `~/Library/LaunchAgents/com.sklavit.claude-usage.*.plist`.
 - A read-only snapshot of the stats is mirrored into `data/` here by the daily agent
   (`--export-dir`). `data/` is for backup/reading; the authoritative archive that must
@@ -41,7 +41,7 @@ Code usage** (tokens + estimated API-equivalent cost), split per account. Read
 ## The `check` view (% of subscription limit)
 
 When the user asks for **"usage"**, run:
-`uv run ~/.claude-usage-archive/usage.py check` — it shows % of the weekly
+`uv run ~/.claude-usage-archive/budget.py check` — it shows % of the weekly
 limit consumed per weekly cycle per account.
 
 - True "% of limit" **cannot** be computed from tokens: Anthropic publishes no fixed
@@ -65,13 +65,13 @@ limit consumed per weekly cycle per account.
 
 ## Common tasks
 
-- **Change pricing:** edit the `PRICING` dict at the top of `usage.py`, then `./install.sh`.
+- **Change pricing:** edit the `PRICING` dict at the top of `budget.py`, then `./install.sh`.
 - **Add a real Fable 5 price:** currently falls back to the `sonnet` tier (flagged in
   output). Use the `claude-api` skill / reference to get correct list prices before
   hardcoding.
 - **Change schedule:** edit the plist templates in `install.sh` (they're generated
   there), then re-run it.
-- **Inspect data:** `uv run ~/.claude-usage-archive/usage.py report`.
+- **Inspect data:** `uv run ~/.claude-usage-archive/budget.py report`.
 
 ## When asked about "why is old usage missing"
 

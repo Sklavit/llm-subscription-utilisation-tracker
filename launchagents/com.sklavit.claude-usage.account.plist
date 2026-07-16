@@ -7,13 +7,13 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>$HOME/.claude-usage-archive/usage.py</string>
+        <string>/Users/sergii/.claude-usage-archive/budget.py</string>
         <string>--record-limits</string>
     </array>
     <key>StartInterval</key><integer>1800</integer>
     <key>RunAtLoad</key>
     <true/>
-    <key>StandardOutPath</key><string>$HOME/.claude-usage-archive/account.log</string>
-    <key>StandardErrorPath</key><string>$HOME/.claude-usage-archive/account.log</string>
+    <key>StandardOutPath</key><string>/Users/sergii/.claude-usage-archive/account.log</string>
+    <key>StandardErrorPath</key><string>/Users/sergii/.claude-usage-archive/account.log</string>
 </dict>
 </plist>

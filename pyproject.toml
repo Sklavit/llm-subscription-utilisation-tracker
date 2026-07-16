@@ -32,10 +32,10 @@ Issues = "https://github.com/Sklavit/llm-subscription-utilisation-tracker/issues
 Changelog = "https://github.com/Sklavit/llm-subscription-utilisation-tracker/blob/main/CHANGELOG.md"
 
 [project.scripts]
-claude-usage-tracker = "usage:main"
+claude-usage-tracker = "budget:main"
 
 [tool.setuptools]
-py-modules = ["usage"]
+py-modules = ["budget"]
 
 [tool.ruff]
 line-length = 100

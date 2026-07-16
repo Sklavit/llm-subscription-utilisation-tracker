@@ -22,8 +22,8 @@ gives the archive more raw logs to draw from.
 ## "usage" → % of subscription limit consumed
 
 ```bash
-uv run ~/.claude-usage-archive/usage.py check              # report
-uv run ~/.claude-usage-archive/usage.py --record-limits    # sample now
+uv run ~/.claude-usage-archive/budget.py check              # report
+uv run ~/.claude-usage-archive/budget.py --record-limits    # sample now
 ```
 
 True % can't come from tokens (Anthropic publishes no fixed limit, stores no history).
@@ -37,9 +37,9 @@ weekly limit per weekly cycle per account, plus latest session (5h) + weekly rea
 ## Read token usage / cost
 
 ```bash
-uv run ~/.claude-usage-archive/usage.py report             # whole archive
-uv run ~/.claude-usage-archive/usage.py report --by-model  # + per-model rows
-uv run ~/.claude-usage-archive/usage.py scan --csv ~/usage.csv
+uv run ~/.claude-usage-archive/budget.py report             # whole archive
+uv run ~/.claude-usage-archive/budget.py report --by-model  # + per-model rows
+uv run ~/.claude-usage-archive/budget.py scan --csv ~/usage.csv
 ```
 
 `report` does NOT rescan. The bare command (same as `scan`) scans logs and merges
@@ -60,7 +60,7 @@ via `--export-dir`. Use those for quick reading/backup; the authoritative archiv
 
 ## Maintain
 
-- **Pricing wrong / new model unpriced:** edit `PRICING` in the project's `usage.py`,
+- **Pricing wrong / new model unpriced:** edit `PRICING` in the project's `budget.py`,
   then run the project's `./install.sh` to redeploy. Unknown models fall back to the
   `sonnet` tier and are flagged in output.
 - **Change schedule:** edit plist generation in the project's `install.sh`, re-run it.

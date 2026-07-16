@@ -17,14 +17,14 @@ account was active at each message's timestamp. All history before the first run
 is attributed to whatever account is active on that first run.
 
 Usage:
-  uv run usage.py                  # scan logs + merge into archive, then print `check`
-  uv run usage.py scan             # same as bare
-  uv run usage.py check            # % of subscription limit consumed, per account (no scan)
-  uv run usage.py report           # print the token/cost archive (no scan)
-  uv run usage.py update           # sample active account + live limit % (fast; for frequent timers)
-  uv run usage.py --record-account # only sample the active account
-  uv run usage.py scan --csv out.csv    # also export the archive as CSV
-  uv run usage.py report --by-model     # per-model breakdown of the token archive
+  uv run budget.py                  # scan logs + merge into archive, then print `check`
+  uv run budget.py scan             # same as bare
+  uv run budget.py check            # % of subscription limit consumed, per account (no scan)
+  uv run budget.py report           # print the token/cost archive (no scan)
+  uv run budget.py update           # sample active account + live limit % (fast; for frequent timers)
+  uv run budget.py --record-account # only sample the active account
+  uv run budget.py scan --csv out.csv    # also export the archive as CSV
+  uv run budget.py report --by-model     # per-model breakdown of the token archive
 """
 
 import argparse
@@ -753,7 +753,7 @@ def usage_report(timeline=None):
     if not have:
         print("No live limit readings yet.")
         print("These accrue going forward — the 30-min scheduler samples them from Claude Code.")
-        print("Sample one now:  uv run ~/.claude-usage-archive/usage.py --record-limits")
+        print("Sample one now:  uv run ~/.claude-usage-archive/budget.py --record-limits")
         return
 
     # Cycles are segmented on resets *detected in the readings* (see _is_reset),
